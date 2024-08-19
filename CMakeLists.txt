@@ -1,0 +1,30 @@
+cmake_minimum_required(VERSION 3.20)
+
+project(fairchild)
+set(RTMIDI_TARGETNAME_UNINSTALL "rtmidi-uninstall")
+set(PFFFT_TARGETNAME_UNINSTALL "pffft-uninstall")
+
+# find_package(PkgConfig REQUIRED)
+
+# pkg_search_module(FFTW REQUIRED fftw3 IMPORTED_TARGET)
+# include_directories(PkgConfig::FFTW)
+
+option (BUILD_PROGRAMS "Build programs" OFF)
+option (BUILD_EXAMPLES "Build examples" OFF)
+option (BUILD_TESTING "Build tests" OFF)
+option (ENABLE_CPACK "Enable CPack support" OFF)
+option(PFFFT_USE_TYPE_FLOAT "Use float precision" ON)
+
+add_subdirectory("${PROJECT_SOURCE_DIR}/libsamplerate")
+add_subdirectory("${PROJECT_SOURCE_DIR}/libsndfile")
+add_subdirectory("${PROJECT_SOURCE_DIR}/pffft")
+add_subdirectory("${PROJECT_SOURCE_DIR}/portaudio")
+add_subdirectory("${PROJECT_SOURCE_DIR}/rtmidi")
+# add_subdirectory("${PROJECT_SOURCE_DIR}/matplotplusplus")
+
+set(RTMIDI_TARGETNAME_UNINSTALL "rtmidi-uninstall" CACHE STRING "Name of 'uninstall' build target")
+
+add_executable(${PROJECT_NAME} "main.cpp")
+target_link_libraries(${PROJECT_NAME} PortAudio SndFile::sndfile samplerate rtmidi PFFFT)
+
+# set_target_properties(${PROJECT_NAME} PROPERTIES FOLDER "Examples C")
