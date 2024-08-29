@@ -1,0 +1,18 @@
+[submodule "libsamplerate"] 
+  path = libsamplerate 
+  url = https://github.com/libsndfile/libsamplerate
+[submodule "libsndfile"] 
+  path = libsndfile 
+  url = https://github.com/libsndfile/libsndfile
+[submodule "matplotplusplus"] 
+  path = matplotplusplus
+  url = https://github.com/alandefreitas/matplotplusplus 
+[submodule "pffft"] 
+  path = pffft 
+  url = https://github.com/marton78/pffft
+[submodule "portaudio"] 
+  path = portaudio
+  url = https://github.com/PortAudio/portaudio
+[submodule "rtmidi"] 
+  path = rtmidi
+  url = https://github.com/thestk/rtmidi

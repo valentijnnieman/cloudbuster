@@ -13,8 +13,8 @@
 #include <numbers>
 #include <cmath>
 
-// #include <matplot/matplot.h>
-// using namespace matplot;
+#include <matplot/matplot.h>
+using namespace matplot;
 
 // Normalize to [0,2PI):
 double phaseNorm(float x)
@@ -68,7 +68,8 @@ callback
     memset(out, 0, sizeof(float) * frameCount * 2);
 
     std::vector<float> buffer(frameCount * 2, 0.0f);
-    float amp = 1.0f / (float)data->voices.size();
+    // float amp = 1.0f / (float)data->voices.size();
+    float amp = 0.9f;
 
     for(auto sampler : data->voices)
     {
@@ -84,19 +85,11 @@ callback
         if(sampler->stopping && !sampler->running)
         {
             std::vector<float> samples = sampler->get_samples(frameCount * 2, amp);
-
-            if(sampler->index >= sampler->frames_size()/2)
-            {
-                sampler->stopping = false;
-                sampler->running = false;
-            }
-            else
-            {
                 for(int i = 0; i < frameCount * 2; i++)
                 {
                     buffer[i] += samples[i];
                 }
-            }
+            // }
         }
     }
     for(int i = 0; i < frameCount * 2; i++)
@@ -113,8 +106,10 @@ int main(int argc, const char * argv[])
 {
     std::vector<std::string> args(argv + 1, argv + argc);
 
+    bool pv = true;
     bool fantasy = false;
     bool gongo = false;
+    bool instantaneous = false;
     int N = 1024;
     int window_size = 1024;
     int min_note = 20;
@@ -122,6 +117,7 @@ int main(int argc, const char * argv[])
     int hop_size_div = 8;
     int midi_in = 1;
     int midi_out = 1;
+    int device = 0;
     std::string filename = "/home/valentijn/dev/c++/cloudbuster/fairchild/samples/Piano_note_a1.wav";
 
     for(int i = 0; i < args.size(); i++)
@@ -162,6 +158,11 @@ int main(int argc, const char * argv[])
             midi_out = midi_in;
             std::cout << "[Sampler] midi i/o ports: " << midi_in<< std::endl;
         }
+        if(args[i] == "-device")
+        {
+            device = stoi(args[i+1]);
+            std::cout << "[Sampler] device: " << device << std::endl;
+        }
         else
         {
             if(args[i] == "fantasy")
@@ -174,6 +175,15 @@ int main(int argc, const char * argv[])
                 gongo = true;
                 std::cout << "[Sampler] using GONGO preset" << std::endl;
             }
+            if(args[i] == "instantaneous")
+            {
+                instantaneous = true;
+            }
+            if(args[i] == "no-pv")
+            {
+                pv = false;
+                std::cout << "[Sampler] using no-phase-vocoder setting" << std::endl;
+            }
         }
     }
 
@@ -181,6 +191,7 @@ int main(int argc, const char * argv[])
     Sampler sampler = Sampler(filename, N, window_size, hop_size_div);
     sampler.FANTASY = fantasy;
     sampler.GONGO = gongo;
+    sampler.INSTANTANEOUS = instantaneous;
 
     PaStream *stream;
     PaError error;
@@ -201,12 +212,29 @@ int main(int argc, const char * argv[])
     std::cout << "calculating samples..." <<std::endl;
     for(int i = min_note; i < max_note; i++)
     {
-        sampler.calculate_sample_pv(data, i);
+        if(pv)
+        {
+            sampler.calculate_sample_pv(data, i);
+        }
+        else
+        {
+            sampler.calculate_sample(data, i);
+        }
     }
+
+    std::cout << "og size: " << sampler.samples.size() << std::endl;;
+    std::cout << "key samp size: " << sampler.key_samples[69].size() << std::endl;;
+
+    std::vector<double> x = linspace(0, sampler.samples.size());
+
+    plot(x, sampler.samples, "-o");
+    show();
+
+    plot(x, sampler.key_samples[69], "--xr");
+    show();
 
     // data.voices.push_back(std::make_shared<Sampler>(sampler));
     std::cout << "copying samplers for voices..." <<std::endl;
-
     for(int j = 0; j < 32; j++)
     {
         std::cout << "creating sampler #: " << j << std::endl;
@@ -235,19 +263,57 @@ int main(int argc, const char * argv[])
         fprintf(stderr, "Problem initializing\n");
         return 1;
     }
+    PaStreamParameters outputParameters;
+
+    int numDevices = Pa_GetDeviceCount();
+    if( numDevices < 0 )
+    {
+        printf( "ERROR: Pa_GetDeviceCount returned 0x%x\n", numDevices );
+    }
+    const   PaDeviceInfo *deviceInfo = Pa_GetDeviceInfo(device);
+    printf( "Name                        = %s\n", deviceInfo->name );
+    printf( "Host API                    = %s\n",  Pa_GetHostApiInfo( deviceInfo->hostApi )->name );
+    printf( "Max inputs = %d", deviceInfo->maxInputChannels  );
+    printf( ", Max outputs = %d\n", deviceInfo->maxOutputChannels  );
+
+    printf( "Default low input latency   = %8.4f\n", deviceInfo->defaultLowInputLatency  );
+    printf( "Default low output latency  = %8.4f\n", deviceInfo->defaultLowOutputLatency  );
+    printf( "Default high input latency  = %8.4f\n", deviceInfo->defaultHighInputLatency  );
+    printf( "Default high output latency = %8.4f\n", deviceInfo->defaultHighOutputLatency  );
+
+
+    outputParameters.device = device;
+    if (outputParameters.device == paNoDevice) {
+        fprintf(stderr,"Error: No default output device.\n");
+    }
+    outputParameters.channelCount = 2;
+    outputParameters.sampleFormat = paFloat32;
+    outputParameters.suggestedLatency = Pa_GetDeviceInfo( outputParameters.device )->defaultLowOutputLatency;
+    outputParameters.hostApiSpecificStreamInfo = NULL;
     
     /* Open PaStream with values read from the file */
-    error = Pa_OpenDefaultStream(&stream
-                                 ,0                     /* no input */
-                                //  ,data.info.channels         /* stereo out */
-                                ,2
-                                 ,paFloat32             /* floating point */
-                                //  ,file.samplerate()
-                                ,sampler.fs
-                                // ,44100
-                                 ,512
-                                 ,callback
-                                 ,&data);        /* our sndfile data struct */
+    // error = Pa_OpenDefaultStream(&stream
+    //                              ,0                     /* no input */
+    //                             //  ,data.info.channels         /* stereo out */
+    //                             ,2
+    //                              ,paFloat32             /* floating point */
+    //                             //  ,file.samplerate()
+    //                             ,sampler.fs
+    //                             // ,44100
+    //                              ,512
+    //                              ,callback
+    //                              ,&data);        /* our sndfile data struct */
+    error = Pa_OpenStream(
+              &stream,
+              NULL,
+              &outputParameters,                  /* &outputParameters, */
+            //   44100,
+              sampler.fs,
+              256,
+              paNoFlag,
+              callback,
+              &data );
+
     if(error != paNoError)
     {
         fprintf(stderr, "Problem opening Default Stream\n");
