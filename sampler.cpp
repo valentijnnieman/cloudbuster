@@ -5,8 +5,10 @@
 #include "hanning.hpp"
 #include "sndfile.hh"
 #include "pffft.hpp"
+#include "fftw3.h"
 #include <map>
 #include <matplot/matplot.h>
+
 using namespace matplot;
 
 class Sampler;
@@ -35,8 +37,14 @@ private:
     int hop_size_div;
     float pitch_ratio;
 
-    typedef pffft::Fft<float> FFT_T;
-    pffft::Fft<float> fft;
+    float* in;
+    fftwf_complex *out;
+
+    fftwf_plan p;
+    fftwf_plan pi;
+
+    // typedef pffft::Fft<float> FFT_T;
+    // pffft::Fft<float> fft;
 
 public:
     int index = 0;
@@ -65,7 +73,7 @@ public:
         // std::cout << "window[0]: " << window[0] << std::endl;
     }
     Sampler(const std::string& filename, int N = 1024, int window_size = 1024, int hop_size_div = 4)
-    : it(it), N(N), fft(N), window_size(window_size), hop_size_div(hop_size_div)
+    : it(it), N(N), window_size(window_size), hop_size_div(hop_size_div)
     {
         /* Open the soundfile */
         file = sf_open(filename.c_str(), SFM_READ, &info);
@@ -76,6 +84,12 @@ public:
         fs = info.samplerate;
         sig_len = samples.size();
 
+        // in = (float*) fftwf_malloc(sizeof(float) * window_size);
+        // out = (float*) fftwf_malloc(sizeof(float) * window_size);
+        // fft_in = (fftwf_complex*) fftwf_malloc(sizeof(fftwf_complex) * window_size);
+        // fft_out = (fftwf_complex*) fftwf_malloc(sizeof(fftwf_complex) * window_size);
+
+
         pitch_ratio = 1.0f;
         /* Close the soundfile */
         sf_close(file);
@@ -83,11 +97,9 @@ public:
     ~Sampler()
     {
         free(file);
-    }
-    float* get_sample(int note)
-    {
-        current_note = note;
-        return &key_samples[note][index * 2];
+        fftwf_destroy_plan(p);
+        fftwf_free(in); 
+        fftwf_free(out);
     }
 
     std::vector<float> get_samples(int frameCount, float amp)
@@ -132,12 +144,18 @@ public:
 
     void forward_fft(float* time_data, std::complex<float>* freq_data)
     {
-        fft.forward(time_data, freq_data);
+        out = reinterpret_cast<fftwf_complex*>(freq_data);
+        in = time_data;
+        p = fftwf_plan_dft_r2c_1d(N, in, out, FFTW_ESTIMATE);
+        fftwf_execute(p);
     }
 
     void ifft(float* time_data, std::complex<float>* freq_data)
     {
-        fft.inverse(freq_data, time_data);
+        out = reinterpret_cast<fftwf_complex*>(freq_data);
+        in = time_data;
+        pi = fftwf_plan_dft_c2r_1d(N, out, in, FFTW_ESTIMATE);
+        fftwf_execute(pi);
     }
 
     void resample(float* data_in, float* data_out, int input_size, int output_size, float pitch_ratio)
@@ -177,7 +195,7 @@ public:
         data.max = samples.size()* 2;
 
         float freq = note_to_freq(note);
-        float div = 440.0f;
+        float div = 440.0;
         float r = div / freq;
         pitch_ratio = r;
 
@@ -203,8 +221,8 @@ public:
             std::vector<float> out(window_size, 0.0f);
             std::vector<float> phi(window_size, 0.0f);
 
-            std::vector<std::complex<float> > resynth_buffer(window_size, 0.0f);
-            std::vector<std::complex<float> > fft_buffer(window_size, 0.0f);
+            std::vector<std::complex<float> > resynth_buffer(window_size/2+1, 0.0f);
+            std::vector<std::complex<float> > fft_buffer(window_size/2+1, 0.0f);
 
             // read M (window size) samples into buffer
             for(int i = 0; i < window_size; i++)
@@ -214,9 +232,7 @@ public:
             }
 
             forward_fft((float*)&buffer[0], (std::complex<float>*)&fft_buffer[0]);
-            // fft.forward((float*)&buffer[0], (std::complex<float>*)&fft_buffer[0]);
-            // fft(N, (float*)&next_buffer[0], (std::complex<float>*)&next_fft_buffer[0]);
-            for(int i = 0; i < window_size; i++)
+            for(int i = 0; i < window_size/2+1; i++)
             {
                 // the instantaneous phase or local phase (or simply, phase!)
                 // is calculated as arg(c(t)) where c(t) is a complex number and 
@@ -273,7 +289,7 @@ public:
 
             for(int i = 0; i < window_size; i++)
             {
-                out_samples[write_ptr + i] += window[i] * (out[i] / N);
+                out_samples[write_ptr + i] += window[i] * (out[i]);
             }
 
             read_ptr += analysis_hopsize;
