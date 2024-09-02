@@ -68,8 +68,8 @@ callback
     memset(out, 0, sizeof(float) * frameCount * 2);
 
     std::vector<float> buffer(frameCount * 2, 0.0f);
-    // float amp = 1.0f / (float)data->voices.size();
-    float amp = 0.9f;
+    float amp = 1.0f / (float)data->voices.size();
+    // float amp = 0.5f;
 
     for(auto sampler : data->voices)
     {
@@ -106,13 +106,14 @@ int main(int argc, const char * argv[])
 {
     std::vector<std::string> args(argv + 1, argv + argc);
 
-    bool pv = true;
-    bool fantasy = false;
+    bool pv = false;
+    bool stft = false;
+    bool phi_unwrap = true;
     bool gongo = false;
     bool instantaneous = false;
     int N = 1024;
     int window_size = 1024;
-    int min_note = 20;
+    int min_note = 40;
     int max_note = 90;
     int hop_size_div = 8;
     int midi_in = 1;
@@ -165,10 +166,10 @@ int main(int argc, const char * argv[])
         }
         else
         {
-            if(args[i] == "fantasy")
+            if(args[i] == "no-unwrap")
             {
-                fantasy = true;
-                std::cout << "[Sampler] using FANTASY preset" << std::endl;
+                phi_unwrap = false;
+                std::cout << "[Sampler] not unwrapping phi values in algorithm" << std::endl;
             }
             if(args[i] == "gongo")
             {
@@ -178,18 +179,25 @@ int main(int argc, const char * argv[])
             if(args[i] == "instantaneous")
             {
                 instantaneous = true;
+                std::cout << "[Sampler] calculate instantaneous frequency in algorithm" << std::endl;
             }
-            if(args[i] == "no-pv")
+            if(args[i] == "pitchshift")
+            {
+                pv = true;
+                std::cout << "[Sampler] using phase-vocoder pitch shifting algorithm" << std::endl;
+            }
+            if(args[i] == "phase-vocoder")
             {
                 pv = false;
-                std::cout << "[Sampler] using no-phase-vocoder setting" << std::endl;
+                stft = true;
+                std::cout << "[Sampler] using phase vocoder algorithm" << std::endl;
             }
         }
     }
 
     // SndfileHandle file;
     Sampler sampler = Sampler(filename, N, window_size, hop_size_div);
-    sampler.FANTASY = fantasy;
+    sampler.PHI_UNWRAP = phi_unwrap;
     sampler.GONGO = gongo;
     sampler.INSTANTANEOUS = instantaneous;
 
@@ -209,52 +217,14 @@ int main(int argc, const char * argv[])
 
     ctrl.midiOut->openPort(midi_out);
 
-    std::cout << "calculating samples..." <<std::endl;
-    for(int i = min_note; i < max_note; i++)
-    {
-        if(pv)
-        {
-            sampler.calculate_sample_pv(data, i);
-        }
-        else
-        {
-            sampler.calculate_sample(data, i);
-        }
-    }
-
-    std::cout << "og size: " << sampler.samples.size() << std::endl;;
-    std::cout << "key samp size: " << sampler.key_samples[69].size() << std::endl;;
-
-    std::vector<double> x = linspace(0, sampler.samples.size());
-
-    plot(x, sampler.samples, "-o");
-    show();
-
-    plot(x, sampler.key_samples[69], "--xr");
-    show();
-
-    // data.voices.push_back(std::make_shared<Sampler>(sampler));
     std::cout << "copying samplers for voices..." <<std::endl;
     for(int j = 0; j < 32; j++)
     {
-        std::cout << "creating sampler #: " << j << std::endl;
         Sampler *s = new Sampler(sampler);
         s->it = j;
 
-        s->print_stats();
         data.voices.push_back(std::shared_ptr<Sampler>(s));
     }
-    std::cout << "Done! opening stream..." <<std::endl;
-    // data.samples = out_samples;
-
-    // data viz section!
-
-    // std::vector<double> x = linspace(0, out_samples.size());
-    // plot(x, samples);
-    // hold(on);
-    // plot(x, out_samples);
-    // show();
-
 
     /* init portaudio */
     error = Pa_Initialize();
@@ -291,18 +261,6 @@ int main(int argc, const char * argv[])
     outputParameters.suggestedLatency = Pa_GetDeviceInfo( outputParameters.device )->defaultLowOutputLatency;
     outputParameters.hostApiSpecificStreamInfo = NULL;
     
-    /* Open PaStream with values read from the file */
-    // error = Pa_OpenDefaultStream(&stream
-    //                              ,0                     /* no input */
-    //                             //  ,data.info.channels         /* stereo out */
-    //                             ,2
-    //                              ,paFloat32             /* floating point */
-    //                             //  ,file.samplerate()
-    //                             ,sampler.fs
-    //                             // ,44100
-    //                              ,512
-    //                              ,callback
-    //                              ,&data);        /* our sndfile data struct */
     error = Pa_OpenStream(
               &stream,
               NULL,
@@ -328,6 +286,53 @@ int main(int argc, const char * argv[])
         return 1;
     }
 
+    std::cout << "calculating samples..." <<std::endl;
+    for(int i = min_note; i < max_note; i++)
+    {
+        if(pv)
+        {
+            sampler.calculate_sample_pitch_shift(data, i);
+        }
+        if(!pv && stft)
+        {
+            sampler.calculate_sample_stft(data, i);
+        }
+        if(!pv && !stft)
+        {
+            sampler.calculate_sample(data, i);
+        }
+        // copy samples to all voices
+        for(auto s : data.voices)
+        {
+            s->key_samples[i] = sampler.key_samples[i];
+        }
+    }
+
+    std::cout << "og size: " << sampler.samples.size() << std::endl;;
+    std::cout << "key samp size: " << sampler.key_samples[69].size() << std::endl;;
+
+    // std::vector<double> x = linspace(0, sampler.samples.size());
+
+    // plot(x, sampler.samples, "-o");
+    // show();
+
+    // plot(x, sampler.key_samples[69], "--xr");
+    // show();
+
+    // data.voices.push_back(std::make_shared<Sampler>(sampler));
+    std::cout << "Done! opening stream..." <<std::endl;
+    // data.samples = out_samples;
+
+    // data viz section!
+
+    // std::vector<double> x = linspace(0, out_samples.size());
+    // plot(x, samples);
+    // hold(on);
+    // plot(x, out_samples);
+    // show();
+
+
+
     /* Run until EOF is reached */
     while(Pa_IsStreamActive(stream))
     {
@@ -341,7 +346,7 @@ int main(int argc, const char * argv[])
         fprintf(stderr, "Problem closing stream\n");
         return 1;
     }
-    
+
     error = Pa_Terminate();
     if(error != paNoError)
     {
