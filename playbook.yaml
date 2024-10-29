@@ -5,7 +5,7 @@
   tasks:
     - name: Create directory 
       ansible.builtin.file:
-        path: /home/vaal/fairchild  
+        path: /home/valentijn/fairchild  
         state: directory
     - name: Install git
       ansible.builtin.apt:
@@ -21,32 +21,27 @@
     # - name: Extract FFTW from tarball
     #   ansible.builtin.unarchive:
     #     src: fftw-3.3.10.tar.gz
-    #     dest: /home/vaal/fairchild/fftw-3.3.10
+    #     dest: /home/valentijn/fairchild/fftw-3.3.10
 
     - name: Pull portaudio
       ansible.builtin.git:
         repo: 'https://github.com/PortAudio/portaudio/'
-        dest: /home/vaal/fairchild/portaudio
+        dest: /home/valentijn/fairchild/portaudio
 
     - name: Pull rtmidi
       ansible.builtin.git:
         repo: 'https://github.com/thestk/rtmidi/'
-        dest: /home/vaal/fairchild/rtmidi
+        dest: /home/valentijn/fairchild/rtmidi
 
     - name: Pull libsndfile
       ansible.builtin.git:
         repo: 'https://github.com/libsndfile/libsndfile/'
-        dest: /home/vaal/fairchild/libsndfile
+        dest: /home/valentijn/fairchild/libsndfile
 
     - name: Pull libsamplerate 
       ansible.builtin.git:
         repo: 'https://github.com/libsndfile/libsamplerate/'
-        dest: /home/vaal/fairchild/libsamplerate
-
-    - name: Pull pffft 
-      ansible.builtin.git:
-        repo: 'https://github.com/marton78/pffft/'
-        dest: /home/vaal/fairchild/pffft
+        dest: /home/valentijn/fairchild/libsamplerate
 
     # - name: Pull matplotplusplus 
     #   ansible.builtin.git:
@@ -60,8 +55,8 @@
     - name: Copy files
       ansible.builtin.copy:
         src: "{{ item }}"
-        dest: /home/vaal/fairchild/
-        owner: vaal
+        dest: /home/valentijn/fairchild/
+        owner: valentijn
       with_items:
         - main.cpp
         - midi_controller.hpp
@@ -71,17 +66,17 @@
     - name: Copy samples 
       ansible.builtin.copy:
         src: "samples"
-        dest: /home/vaal/fairchild/samples
-        owner: vaal
+        dest: /home/valentijn/fairchild/samples
+        owner: valentijn
     - name: Create build directory 
       ansible.builtin.file:
-        path: /home/vaal/fairchild/build
+        path: /home/valentijn/fairchild/build
         state: directory
     - name: Change to build directory 
-      ansible.builtin.command: /home/vaal/fairchild/build
+      ansible.builtin.command: /home/valentijn/fairchild/build
     - name: Build targets
       community.general.make:
-        chdir: /home/vaal/fairchild/build
+        chdir: /home/valentijn/fairchild/build
         target: all
 
 

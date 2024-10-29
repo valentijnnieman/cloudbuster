@@ -1,358 +1,263 @@
+#include <algorithm>
+#include <complex>
+#include <iomanip>
+#include <iostream>
 #include <stdio.h>
 #include <string.h>
-#include <complex>
-#include <iostream>
-#include <iomanip>
-#include <algorithm>
 
 #include <vector>
 
 #include "portaudio.h"
 
 #include "midi_controller.hpp"
-#include <numbers>
 #include <cmath>
+#include <numbers>
 
-#include <matplot/matplot.h>
-using namespace matplot;
+// #include <matplot/matplot.h>
+// using namespace matplot;
 
-// Normalize to [0,2PI):
-double phaseNorm(float x)
-{
-    x = fmod(x, 2*PI);
-    if (x < 0)
-        x += 2*PI;
-    return x;
-};
+#define FRAMES_PER_BUFFER (512)
 
-void cartesianToPolar(float x, float y, float &r, float &q ) {
-    r = sqrt(x * x + y * y); q = atan(y / x);
+static int callback(const void *input, void *output, unsigned long frameCount,
+                    const PaStreamCallbackTimeInfo *timeInfo,
+                    PaStreamCallbackFlags statusFlags, void *userData) {
+  callback_data_s *data = (callback_data_s *)userData;
+  float *out = (float *)output;
+  memset(out, 0, sizeof(float) * frameCount * 2);
+
+  std::vector<float> buffer(frameCount * 2, 0.0f);
+  float amp = 1.0f / (float)data->voices.size();
+  // float amp = 0.5f;
+
+  for (auto sampler : data->voices) {
+    if (sampler->running && !sampler->stopping) {
+      std::vector<float> samples = sampler->get_samples(frameCount * 2, amp);
+
+      for (int i = 0; i < frameCount * 2; i++) {
+        buffer[i] += samples[i];
+      }
+    }
+    if (sampler->stopping && !sampler->running) {
+      std::vector<float> samples = sampler->get_samples(frameCount * 2, amp);
+      for (int i = 0; i < frameCount * 2; i++) {
+        buffer[i] += samples[i];
+      }
+      // }
+    }
+  }
+  for (int i = 0; i < frameCount * 2; i++) {
+    *out++ = buffer[i];
+  }
+
+  return paContinue;
 }
 
-// unwrap phase [-PI,PI]
-std::vector<float> phaseUnwrap(std::vector<float> in)
-{
-    // Normalize to [0,2PI):
-    std::transform(in.begin(),in.end(),in.begin(),[&](float d){ return phaseNorm(d); });
+int main(int argc, const char *argv[]) {
+  std::vector<std::string> args(argv + 1, argv + argc);
 
-    // unwrap iteration
-    for(size_t i = 0; i < in.size()-1; ++i)
-    {
-        int n2PiJump = in[i] / (2*PI);
-        in[i+1] += n2PiJump * 2*PI;
-        if(in[i]-in[i+1] > PI)
-        {
-            in[i+1] += PI;
-        }
+  bool pv = false;
+  bool stft = false;
+  bool phi_unwrap = true;
+  bool gongo = false;
+  bool instantaneous = false;
+  int N = 1024;
+  int window_size = 1024;
+  int min_note = 40;
+  int max_note = 90;
+  int hop_size_div = 8;
+  int midi_in = 1;
+  int midi_out = 1;
+  int device = 0;
+  std::string filename =
+      "/home/valentijn/dev/c++/cloudbuster/fairchild/samples/Piano_note_a1.wav";
+
+  for (int i = 0; i < args.size(); i++) {
+    if (args[i] == "-f") {
+      filename = args[i + 1];
+      std::cout << "[Sampler] using file: " << filename << std::endl;
     }
-    return in;
-}
-
-
-#define FRAMES_PER_BUFFER   (512)
-
-
-static
-int
-callback
-    (const void                     *input
-    ,void                           *output
-    ,unsigned long                   frameCount
-    ,const PaStreamCallbackTimeInfo *timeInfo
-    ,PaStreamCallbackFlags           statusFlags
-    ,void                           *userData
-    )
-{
-    callback_data_s *data = (callback_data_s*)userData;
-    float *out = (float*)output;
-    memset(out, 0, sizeof(float) * frameCount * 2);
-
-    std::vector<float> buffer(frameCount * 2, 0.0f);
-    float amp = 1.0f / (float)data->voices.size();
-    // float amp = 0.5f;
-
-    for(auto sampler : data->voices)
-    {
-        if(sampler->running && !sampler->stopping)
-        {
-            std::vector<float> samples = sampler->get_samples(frameCount * 2, amp);
-
-            for(int i = 0; i < frameCount * 2; i++)
-            {
-                buffer[i] += samples[i];
-            }
-        }
-        if(sampler->stopping && !sampler->running)
-        {
-            std::vector<float> samples = sampler->get_samples(frameCount * 2, amp);
-                for(int i = 0; i < frameCount * 2; i++)
-                {
-                    buffer[i] += samples[i];
-                }
-            // }
-        }
+    if (args[i] == "-n") {
+      N = stoi(args[i + 1]);
+      std::cout << "[Sampler] N (fft) size: " << N << std::endl;
     }
-    for(int i = 0; i < frameCount * 2; i++)
-    {
-        *out++ = buffer[i];
+    if (args[i] == "-w") {
+      window_size = stoi(args[i + 1]);
+      std::cout << "[Sampler] window size: " << window_size << std::endl;
     }
-    
-    return paContinue;
-}
-
-
-
-int main(int argc, const char * argv[])
-{
-    std::vector<std::string> args(argv + 1, argv + argc);
-
-    bool pv = false;
-    bool stft = false;
-    bool phi_unwrap = true;
-    bool gongo = false;
-    bool instantaneous = false;
-    int N = 1024;
-    int window_size = 1024;
-    int min_note = 40;
-    int max_note = 90;
-    int hop_size_div = 8;
-    int midi_in = 1;
-    int midi_out = 1;
-    int device = 0;
-    std::string filename = "/home/valentijn/dev/c++/cloudbuster/fairchild/samples/Piano_note_a1.wav";
-
-    for(int i = 0; i < args.size(); i++)
-    {
-        if(args[i] == "-f")
-        {
-            filename = args[i+1];
-            std::cout << "[Sampler] using file: " << filename << std::endl;
-        }
-        if(args[i] == "-n")
-        {
-            N = stoi(args[i+1]);
-            std::cout << "[Sampler] N (fft) size: " << N << std::endl;
-        }
-        if(args[i] == "-w")
-        {
-            window_size = stoi(args[i+1]);
-            std::cout << "[Sampler] window size: " << window_size << std::endl;
-        }
-        if(args[i] == "-h")
-        {
-            hop_size_div = stoi(args[i+1]);
-            std::cout << "[Sampler] hop size divide by: " << hop_size_div << std::endl;
-        }
-        if(args[i] == "-min")
-        {
-            min_note = stoi(args[i+1]);
-            std::cout << "[Sampler] minimum (midi) note: " << min_note << std::endl;
-        }
-        if(args[i] == "-max")
-        {
-            max_note = stoi(args[i+1]);
-            std::cout << "[Sampler] maximum (midi) note: " << max_note << std::endl;
-        }
-        if(args[i] == "-midi")
-        {
-            midi_in = stoi(args[i+1]);
-            midi_out = midi_in;
-            std::cout << "[Sampler] midi i/o ports: " << midi_in<< std::endl;
-        }
-        if(args[i] == "-device")
-        {
-            device = stoi(args[i+1]);
-            std::cout << "[Sampler] device: " << device << std::endl;
-        }
-        else
-        {
-            if(args[i] == "no-unwrap")
-            {
-                phi_unwrap = false;
-                std::cout << "[Sampler] not unwrapping phi values in algorithm" << std::endl;
-            }
-            if(args[i] == "gongo")
-            {
-                gongo = true;
-                std::cout << "[Sampler] using GONGO preset" << std::endl;
-            }
-            if(args[i] == "instantaneous")
-            {
-                instantaneous = true;
-                std::cout << "[Sampler] calculate instantaneous frequency in algorithm" << std::endl;
-            }
-            if(args[i] == "pitchshift")
-            {
-                pv = true;
-                std::cout << "[Sampler] using phase-vocoder pitch shifting algorithm" << std::endl;
-            }
-            if(args[i] == "phase-vocoder")
-            {
-                pv = false;
-                stft = true;
-                std::cout << "[Sampler] using phase vocoder algorithm" << std::endl;
-            }
-        }
+    if (args[i] == "-h") {
+      hop_size_div = stoi(args[i + 1]);
+      std::cout << "[Sampler] hop size divide by: " << hop_size_div
+                << std::endl;
     }
+    if (args[i] == "-min") {
+      min_note = stoi(args[i + 1]);
+      std::cout << "[Sampler] minimum (midi) note: " << min_note << std::endl;
+    }
+    if (args[i] == "-max") {
+      max_note = stoi(args[i + 1]);
+      std::cout << "[Sampler] maximum (midi) note: " << max_note << std::endl;
+    }
+    if (args[i] == "-midi") {
+      midi_in = stoi(args[i + 1]);
+      midi_out = midi_in;
+      std::cout << "[Sampler] midi i/o ports: " << midi_in << std::endl;
+    }
+    if (args[i] == "-device") {
+      device = stoi(args[i + 1]);
+      std::cout << "[Sampler] device: " << device << std::endl;
+    } else {
+      if (args[i] == "no-unwrap") {
+        phi_unwrap = false;
+        std::cout << "[Sampler] not unwrapping phi values in algorithm"
+                  << std::endl;
+      }
+      if (args[i] == "gongo") {
+        gongo = true;
+        std::cout << "[Sampler] using GONGO preset" << std::endl;
+      }
+      if (args[i] == "instantaneous") {
+        instantaneous = true;
+        std::cout << "[Sampler] calculate instantaneous frequency in algorithm"
+                  << std::endl;
+      }
+      if (args[i] == "pitchshift") {
+        pv = true;
+        std::cout << "[Sampler] using phase-vocoder pitch shifting algorithm"
+                  << std::endl;
+      }
+      if (args[i] == "phase-vocoder") {
+        pv = false;
+        stft = true;
+        std::cout << "[Sampler] using phase vocoder algorithm" << std::endl;
+      }
+    }
+  }
 
-    // SndfileHandle file;
-    Sampler sampler = Sampler(filename, N, window_size, hop_size_div);
-    sampler.PHI_UNWRAP = phi_unwrap;
-    sampler.GONGO = gongo;
-    sampler.INSTANTANEOUS = instantaneous;
+  // SndfileHandle file;
+  Sampler sampler = Sampler(filename, N, window_size, hop_size_div);
+  sampler.PHI_UNWRAP = phi_unwrap;
+  sampler.GONGO = gongo;
+  sampler.INSTANTANEOUS = instantaneous;
 
-    PaStream *stream;
-    PaError error;
-    callback_data_s data;
+  PaStream *stream;
+  PaError error;
+  callback_data_s data;
 
-    MidiController ctrl;
+  MidiController ctrl;
 
-    for(auto& name : ctrl.portNames)
-    {
-        std::cout << name << std::endl;
+  for (auto &name : ctrl.portNames) {
+    std::cout << name << std::endl;
+  }
+
+  ctrl.midiIn->openPort(midi_in);
+  ctrl.midiIn->setCallback(ctrl.callback, &data);
+
+  ctrl.midiOut->openPort(midi_out);
+
+  std::cout << "copying samplers for voices..." << std::endl;
+  for (int j = 0; j < 32; j++) {
+    Sampler *s = new Sampler(sampler);
+    s->it = j;
+
+    data.voices.push_back(std::shared_ptr<Sampler>(s));
+  }
+
+  /* init portaudio */
+  error = Pa_Initialize();
+  if (error != paNoError) {
+    fprintf(stderr, "Problem initializing\n");
+    return 1;
+  }
+  PaStreamParameters outputParameters;
+
+  int numDevices = Pa_GetDeviceCount();
+  if (numDevices < 0) {
+    printf("ERROR: Pa_GetDeviceCount returned 0x%x\n", numDevices);
+  }
+  const PaDeviceInfo *deviceInfo = Pa_GetDeviceInfo(device);
+  printf("Name                        = %s\n", deviceInfo->name);
+  printf("Host API                    = %s\n",
+         Pa_GetHostApiInfo(deviceInfo->hostApi)->name);
+  printf("Max inputs = %d", deviceInfo->maxInputChannels);
+  printf(", Max outputs = %d\n", deviceInfo->maxOutputChannels);
+
+  printf("Default low input latency   = %8.4f\n",
+         deviceInfo->defaultLowInputLatency);
+  printf("Default low output latency  = %8.4f\n",
+         deviceInfo->defaultLowOutputLatency);
+  printf("Default high input latency  = %8.4f\n",
+         deviceInfo->defaultHighInputLatency);
+  printf("Default high output latency = %8.4f\n",
+         deviceInfo->defaultHighOutputLatency);
+
+  outputParameters.device = device;
+  if (outputParameters.device == paNoDevice) {
+    fprintf(stderr, "Error: No default output device.\n");
+  }
+  outputParameters.channelCount = 2;
+  outputParameters.sampleFormat = paFloat32;
+  outputParameters.suggestedLatency =
+      Pa_GetDeviceInfo(outputParameters.device)->defaultLowOutputLatency;
+  outputParameters.hostApiSpecificStreamInfo = NULL;
+
+  error =
+      Pa_OpenStream(&stream, NULL, &outputParameters, /* &outputParameters, */
+                    44100, 256, paNoFlag, callback, &data);
+
+  if (error != paNoError) {
+    fprintf(stderr, "Problem opening Default Stream\n");
+    return 1;
+  }
+
+  /* Start the stream */
+  error = Pa_StartStream(stream);
+  if (error != paNoError) {
+    fprintf(stderr, "Problem opening starting Stream\n");
+    return 1;
+  }
+
+  std::cout << "calculating samples..." << std::endl;
+  for (int i = min_note; i < max_note; i++) {
+    if (pv) {
+      sampler.calculate_sample_pitch_shift(data, i);
+    }
+    if (!pv && stft) {
+      sampler.calculate_sample_stft(data, i);
+    }
+    if (!pv && !stft) {
+      sampler.calculate_sample(data, i);
     }
 
-    ctrl.midiIn->openPort(midi_in);
-    ctrl.midiIn->setCallback(ctrl.callback, &data);
-
-    ctrl.midiOut->openPort(midi_out);
-
-    std::cout << "copying samplers for voices..." <<std::endl;
-    for(int j = 0; j < 32; j++)
-    {
-        Sampler *s = new Sampler(sampler);
-        s->it = j;
-
-        data.voices.push_back(std::shared_ptr<Sampler>(s));
+    // copy samples to all voices
+    for (auto s : data.voices) {
+      s->key_samples[i] = sampler.key_samples[i];
     }
+  }
 
-    /* init portaudio */
-    error = Pa_Initialize();
-    if(error != paNoError)
-    {
-        fprintf(stderr, "Problem initializing\n");
-        return 1;
-    }
-    PaStreamParameters outputParameters;
+  std::cout << "og size: " << sampler.samples.size() << std::endl;
+  ;
+  std::cout << "key samp size: " << sampler.key_samples[69]->size()
+            << std::endl;
+  ;
 
-    int numDevices = Pa_GetDeviceCount();
-    if( numDevices < 0 )
-    {
-        printf( "ERROR: Pa_GetDeviceCount returned 0x%x\n", numDevices );
-    }
-    const   PaDeviceInfo *deviceInfo = Pa_GetDeviceInfo(device);
-    printf( "Name                        = %s\n", deviceInfo->name );
-    printf( "Host API                    = %s\n",  Pa_GetHostApiInfo( deviceInfo->hostApi )->name );
-    printf( "Max inputs = %d", deviceInfo->maxInputChannels  );
-    printf( ", Max outputs = %d\n", deviceInfo->maxOutputChannels  );
+  std::cout << "Done! opening stream..." << std::endl;
+  /* Run until EOF is reached */
+  while (Pa_IsStreamActive(stream)) {
+    // Pa_Sleep(1000);
+  }
 
-    printf( "Default low input latency   = %8.4f\n", deviceInfo->defaultLowInputLatency  );
-    printf( "Default low output latency  = %8.4f\n", deviceInfo->defaultLowOutputLatency  );
-    printf( "Default high input latency  = %8.4f\n", deviceInfo->defaultHighInputLatency  );
-    printf( "Default high output latency = %8.4f\n", deviceInfo->defaultHighOutputLatency  );
+  /*  Shut down portaudio */
+  error = Pa_CloseStream(stream);
+  if (error != paNoError) {
+    fprintf(stderr, "Problem closing stream\n");
+    return 1;
+  }
 
+  error = Pa_Terminate();
+  if (error != paNoError) {
+    fprintf(stderr, "Problem terminating\n");
+    return 1;
+  }
 
-    outputParameters.device = device;
-    if (outputParameters.device == paNoDevice) {
-        fprintf(stderr,"Error: No default output device.\n");
-    }
-    outputParameters.channelCount = 2;
-    outputParameters.sampleFormat = paFloat32;
-    outputParameters.suggestedLatency = Pa_GetDeviceInfo( outputParameters.device )->defaultLowOutputLatency;
-    outputParameters.hostApiSpecificStreamInfo = NULL;
-    
-    error = Pa_OpenStream(
-              &stream,
-              NULL,
-              &outputParameters,                  /* &outputParameters, */
-            //   44100,
-              sampler.fs,
-              256,
-              paNoFlag,
-              callback,
-              &data );
-
-    if(error != paNoError)
-    {
-        fprintf(stderr, "Problem opening Default Stream\n");
-        return 1;
-    }
-    
-    /* Start the stream */
-    error = Pa_StartStream(stream);
-    if(error != paNoError)
-    {
-        fprintf(stderr, "Problem opening starting Stream\n");
-        return 1;
-    }
-
-    std::cout << "calculating samples..." <<std::endl;
-    for(int i = min_note; i < max_note; i++)
-    {
-        if(pv)
-        {
-            sampler.calculate_sample_pitch_shift(data, i);
-        }
-        if(!pv && stft)
-        {
-            sampler.calculate_sample_stft(data, i);
-        }
-        if(!pv && !stft)
-        {
-            sampler.calculate_sample(data, i);
-        }
-        // copy samples to all voices
-        for(auto s : data.voices)
-        {
-            s->key_samples[i] = sampler.key_samples[i];
-        }
-    }
-
-    std::cout << "og size: " << sampler.samples.size() << std::endl;;
-    std::cout << "key samp size: " << sampler.key_samples[69].size() << std::endl;;
-
-    // std::vector<double> x = linspace(0, sampler.samples.size());
-
-    // plot(x, sampler.samples, "-o");
-    // show();
-
-    // plot(x, sampler.key_samples[69], "--xr");
-    // show();
-
-    // data.voices.push_back(std::make_shared<Sampler>(sampler));
-    std::cout << "Done! opening stream..." <<std::endl;
-    // data.samples = out_samples;
-
-    // data viz section!
-
-    // std::vector<double> x = linspace(0, out_samples.size());
-    // plot(x, samples);
-    // hold(on);
-    // plot(x, out_samples);
-    // show();
-
-
-
-    /* Run until EOF is reached */
-    while(Pa_IsStreamActive(stream))
-    {
-        Pa_Sleep(1000);
-    }
-
-    /*  Shut down portaudio */
-    error = Pa_CloseStream(stream);
-    if(error != paNoError)
-    {
-        fprintf(stderr, "Problem closing stream\n");
-        return 1;
-    }
-
-    error = Pa_Terminate();
-    if(error != paNoError)
-    {
-        fprintf(stderr, "Problem terminating\n");
-        return 1;
-    }
-    
-    return 0;
+  return 0;
 }

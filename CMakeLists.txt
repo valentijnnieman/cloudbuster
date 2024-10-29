@@ -25,13 +25,13 @@ add_subdirectory("${PROJECT_SOURCE_DIR}/libsndfile")
 add_subdirectory("${PROJECT_SOURCE_DIR}/fftw-3.3.10")
 add_subdirectory("${PROJECT_SOURCE_DIR}/portaudio")
 add_subdirectory("${PROJECT_SOURCE_DIR}/rtmidi")
-add_subdirectory("${PROJECT_SOURCE_DIR}/matplotplusplus")
+# add_subdirectory("${PROJECT_SOURCE_DIR}/matplotplusplus")
 
 set(RTMIDI_TARGETNAME_UNINSTALL "rtmidi-uninstall" CACHE STRING "Name of 'uninstall' build target")
 
 include_directories("${PROJECT_SOURCE_DIR}/fftw-3.3.10/api")
 add_executable(${PROJECT_NAME} "main.cpp")
-target_link_libraries(${PROJECT_NAME} PortAudio SndFile::sndfile samplerate rtmidi ${FFTW3_LIBRARIES} fftw3f matplot)
+target_link_libraries(${PROJECT_NAME} PortAudio SndFile::sndfile samplerate rtmidi ${FFTW3_LIBRARIES} fftw3f)
 set_target_properties(${PROJECT_NAME} PROPERTIES CXX_STANDARD 17)
 
 cmake_print_variables(FFTW3_LIBRARIES)
