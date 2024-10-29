@@ -1,3 +1,5 @@
 build
 .vscode
 usersamples
+inventory.ini
+playbook.yaml
