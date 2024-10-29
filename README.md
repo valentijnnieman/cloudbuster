@@ -2,7 +2,8 @@
 This is a command-line based program that takes an WAV file and calculates samples for a set of given midi notes, and plays them back using midi input. In other words, this is a command line sampler. It uses a phase vocoder algorithm, and can do pitch-shifting of samples independent of time. 
 
 # Building
-- install ALSA devkit: `sudo apt-get install libasound-dev`
+- ensure you also cloned the submodules, either by cloning this repo with `git clone --recurse-submodules` or `git submodule update --recursive --init` after cloning.
+- On Linux, install ALSA devkit: `sudo apt-get install libasound-dev`. Check portaudio docs for requirements for other OS.
 - make `build` dir, cd into it, and run `cmake ..`
 - run `make` to build program
 
