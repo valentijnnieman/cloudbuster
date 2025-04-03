@@ -2,6 +2,7 @@
 #include <complex>
 #include <iomanip>
 #include <iostream>
+#include <signal.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -17,6 +18,8 @@
 // using namespace matplot;
 
 #define FRAMES_PER_BUFFER (512)
+
+PaStream *stream;
 
 static int callback(const void *input, void *output, unsigned long frameCount,
                     const PaStreamCallbackTimeInfo *timeInfo,
@@ -50,6 +53,22 @@ static int callback(const void *input, void *output, unsigned long frameCount,
   }
 
   return paContinue;
+}
+
+void close_stream(int s) {
+  printf("Closing...\n");
+  PaError error;
+  /*  Shut down portaudio */
+  error = Pa_CloseStream(stream);
+  if (error != paNoError) {
+    fprintf(stderr, "Problem closing stream\n");
+  }
+
+  error = Pa_Terminate();
+  if (error != paNoError) {
+    fprintf(stderr, "Problem terminating\n");
+  }
+  exit(1);
 }
 
 int main(int argc, const char *argv[]) {
@@ -139,7 +158,6 @@ int main(int argc, const char *argv[]) {
   sampler.GONGO = gongo;
   sampler.INSTANTANEOUS = instantaneous;
 
-  PaStream *stream;
   PaError error;
   callback_data_s data;
 
@@ -240,24 +258,14 @@ int main(int argc, const char *argv[]) {
             << std::endl;
   ;
 
+  signal(SIGINT, close_stream);
   std::cout << "Done! opening stream..." << std::endl;
   /* Run until EOF is reached */
   while (Pa_IsStreamActive(stream)) {
     // Pa_Sleep(1000);
   }
 
-  /*  Shut down portaudio */
-  error = Pa_CloseStream(stream);
-  if (error != paNoError) {
-    fprintf(stderr, "Problem closing stream\n");
-    return 1;
-  }
-
-  error = Pa_Terminate();
-  if (error != paNoError) {
-    fprintf(stderr, "Problem terminating\n");
-    return 1;
-  }
+  close_stream(0);
 
   return 0;
 }
