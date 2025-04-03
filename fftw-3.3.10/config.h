@@ -12,7 +12,7 @@
 /* #undef BENCHFFT_QUAD */
 
 /* Define to compile in single precision. */
-/* #undef BENCHFFT_SINGLE */
+#define BENCHFFT_SINGLE 1
 
 /* Define to one of `_getb67', `GETB67', `getb67' for Cray-2 and Cray-YMP
    systems. This function is required for `alloca.c' support on those systems.
@@ -43,7 +43,7 @@
 /* #undef FC_DUMMY_MAIN_EQ_F77 */
 
 /* C compiler name and flags */
-#define FFTW_CC "gcc -O3 -fomit-frame-pointer -mtune=native -fstrict-aliasing"
+#define FFTW_CC "gcc -O3 -fomit-frame-pointer -mtune=native -malign-double -fstrict-aliasing -fno-schedule-insns"
 
 /* Define to enable extra FFTW debugging code. */
 /* #undef FFTW_DEBUG */
@@ -61,7 +61,7 @@
 /* #undef FFTW_RANDOM_ESTIMATOR */
 
 /* Define to compile in single precision. */
-/* #undef FFTW_SINGLE */
+#define FFTW_SINGLE 1
 
 /* Define to 1 if you have the `abort' function. */
 #define HAVE_ABORT 1
@@ -126,7 +126,7 @@
 
 /* Define to 1 if you have the declaration of `memalign', and to 0 if you
    don't. */
-#define HAVE_DECL_MEMALIGN 0
+#define HAVE_DECL_MEMALIGN 1
 
 /* Define to 1 if you have the declaration of `posix_memalign', and to 0 if
    you don't. */
@@ -199,13 +199,13 @@
 #define HAVE_LONG_DOUBLE 1
 
 /* Define to 1 if you have the `mach_absolute_time' function. */
-#define HAVE_MACH_ABSOLUTE_TIME 1
+/* #undef HAVE_MACH_ABSOLUTE_TIME */
 
 /* Define to 1 if you have the <malloc.h> header file. */
-/* #undef HAVE_MALLOC_H */
+#define HAVE_MALLOC_H 1
 
 /* Define to 1 if you have the `memalign' function. */
-/* #undef HAVE_MEMALIGN */
+#define HAVE_MEMALIGN 1
 
 /* Define to 1 if you have the `memmove' function. */
 #define HAVE_MEMMOVE 1
@@ -271,7 +271,7 @@
 #define HAVE_STRING_H 1
 
 /* Define to 1 if you have the `sysctl' function. */
-#define HAVE_SYSCTL 1
+/* #undef HAVE_SYSCTL */
 
 /* Define to 1 if you have the <sys/stat.h> header file. */
 #define HAVE_SYS_STAT_H 1

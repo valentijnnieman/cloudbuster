@@ -87,9 +87,9 @@ POST_INSTALL = :
 NORMAL_UNINSTALL = :
 PRE_UNINSTALL = :
 POST_UNINSTALL = :
-build_triplet = x86_64-apple-darwin23.6.0
-host_triplet = x86_64-apple-darwin23.6.0
-bin_PROGRAMS = fftw-wisdom$(EXEEXT)
+build_triplet = x86_64-pc-linux-gnu
+host_triplet = x86_64-pc-linux-gnu
+bin_PROGRAMS = fftwf-wisdom$(EXEEXT)
 subdir = tools
 ACLOCAL_M4 = $(top_srcdir)/aclocal.m4
 am__aclocal_m4_deps = $(top_srcdir)/m4/acx_mpi.m4 \
@@ -113,23 +113,23 @@ CONFIG_CLEAN_VPATH_FILES =
 am__installdirs = "$(DESTDIR)$(bindir)" "$(DESTDIR)$(bindir)" \
 	"$(DESTDIR)$(man1dir)"
 PROGRAMS = $(bin_PROGRAMS)
-am_fftw_wisdom_OBJECTS =  \
-	fftw_wisdom-fftw-wisdom.$(OBJEXT)
-fftw_wisdom_OBJECTS =  \
-	$(am_fftw_wisdom_OBJECTS)
+am_fftwf_wisdom_OBJECTS =  \
+	fftwf_wisdom-fftw-wisdom.$(OBJEXT)
+fftwf_wisdom_OBJECTS =  \
+	$(am_fftwf_wisdom_OBJECTS)
 am__DEPENDENCIES_1 =
-fftw_wisdom_DEPENDENCIES =  \
+fftwf_wisdom_DEPENDENCIES =  \
 	$(top_builddir)/tests/bench-bench.o \
 	$(top_builddir)/tests/bench-fftw-bench.o $(LIBFFTWTHREADS) \
-	$(top_builddir)/libfftw3.la \
+	$(top_builddir)/libfftw3f.la \
 	$(top_builddir)/libbench2/libbench2.a $(am__DEPENDENCIES_1)
 AM_V_lt = $(am__v_lt_$(V))
 am__v_lt_ = $(am__v_lt_$(AM_DEFAULT_VERBOSITY))
 am__v_lt_0 = --silent
 am__v_lt_1 = 
-fftw_wisdom_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CC \
+fftwf_wisdom_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CC \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CCLD) \
-	$(fftw_wisdom_CFLAGS) $(CFLAGS) $(AM_LDFLAGS) \
+	$(fftwf_wisdom_CFLAGS) $(CFLAGS) $(AM_LDFLAGS) \
 	$(LDFLAGS) -o $@
 am__vpath_adj_setup = srcdirstrip=`echo "$(srcdir)" | sed 's|.|.|g'`;
 am__vpath_adj = case $$p in \
@@ -175,7 +175,7 @@ DEFAULT_INCLUDES = -I. -I$(top_builddir)
 depcomp = $(SHELL) $(top_srcdir)/depcomp
 am__maybe_remake_depfiles = depfiles
 am__depfiles_remade =  \
-	./$(DEPDIR)/fftw_wisdom-fftw-wisdom.Po
+	./$(DEPDIR)/fftwf_wisdom-fftw-wisdom.Po
 am__mv = mv -f
 COMPILE = $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) \
 	$(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS)
@@ -195,8 +195,8 @@ AM_V_CCLD = $(am__v_CCLD_$(V))
 am__v_CCLD_ = $(am__v_CCLD_$(AM_DEFAULT_VERBOSITY))
 am__v_CCLD_0 = @echo "  CCLD    " $@;
 am__v_CCLD_1 = 
-SOURCES = $(fftw_wisdom_SOURCES)
-DIST_SOURCES = $(fftw_wisdom_SOURCES)
+SOURCES = $(fftwf_wisdom_SOURCES)
+DIST_SOURCES = $(fftwf_wisdom_SOURCES)
 am__can_run_installinfo = \
   case $$AM_UPDATE_INFO_DIR in \
     n|no|NO) false;; \
@@ -210,24 +210,24 @@ am__DIST_COMMON = $(dist_man_MANS) $(srcdir)/Makefile.in \
 	$(srcdir)/fftw-wisdom-to-conf.in $(srcdir)/fftw_wisdom.1.in \
 	$(top_srcdir)/depcomp
 DISTFILES = $(DIST_COMMON) $(DIST_SOURCES) $(TEXINFOS) $(EXTRA_DIST)
-ACLOCAL = ${SHELL} '/Users/valentijn/dev/c++/cloudbuster/fftw-3.3.10/missing' aclocal-1.16
+ACLOCAL = ${SHELL} '/home/valentijn/dev/cpp/cloudbuster/fairchild/fftw-3.3.10/missing' aclocal-1.16
 ALLOCA = 
 ALTIVEC_CFLAGS = 
 AMTAR = $${TAR-tar}
 AM_DEFAULT_VERBOSITY = 1
 AR = ar
 AS = as
-AUTOCONF = ${SHELL} '/Users/valentijn/dev/c++/cloudbuster/fftw-3.3.10/missing' autoconf
-AUTOHEADER = ${SHELL} '/Users/valentijn/dev/c++/cloudbuster/fftw-3.3.10/missing' autoheader
-AUTOMAKE = ${SHELL} '/Users/valentijn/dev/c++/cloudbuster/fftw-3.3.10/missing' automake-1.16
+AUTOCONF = ${SHELL} '/home/valentijn/dev/cpp/cloudbuster/fairchild/fftw-3.3.10/missing' autoconf
+AUTOHEADER = ${SHELL} '/home/valentijn/dev/cpp/cloudbuster/fairchild/fftw-3.3.10/missing' autoheader
+AUTOMAKE = ${SHELL} '/home/valentijn/dev/cpp/cloudbuster/fairchild/fftw-3.3.10/missing' automake-1.16
 AVX2_CFLAGS = 
 AVX512_CFLAGS = 
 AVX_128_FMA_CFLAGS = 
 AVX_CFLAGS = 
-AWK = awk
+AWK = mawk
 CC = gcc
 CCDEPMODE = depmode=gcc3
-CFLAGS = -O3 -fomit-frame-pointer -mtune=native -fstrict-aliasing
+CFLAGS = -O3 -fomit-frame-pointer -mtune=native -malign-double -fstrict-aliasing -fno-schedule-insns
 CHECK_PL_OPTS = 
 CPP = gcc -E
 CPPFLAGS = 
@@ -237,17 +237,17 @@ C_MPI_FINT =
 DEFS = -DHAVE_CONFIG_H
 DEPDIR = .deps
 DLLTOOL = dlltool
-DSYMUTIL = dsymutil
+DSYMUTIL = 
 DUMPBIN = 
-ECHO_C = \c
-ECHO_N = 
+ECHO_C = 
+ECHO_N = -n
 ECHO_T = 
 EGREP = /usr/bin/grep -E
 EXEEXT = 
-F77 = gfortran
+F77 = f77
 FFLAGS = -g -O2
 FGREP = /usr/bin/grep -F
-FLIBS =  -L/usr/local/Cellar/gcc/14.1.0_2/bin/../lib/gcc/current/gcc/x86_64-apple-darwin23/14 -L/usr/local/Cellar/gcc/14.1.0_2/bin/../lib/gcc/current/gcc -L/usr/local/Cellar/gcc/14.1.0_2/bin/../lib/gcc/current/gcc/x86_64-apple-darwin23/14/../../.. -lemutls_w -lheapt_w -lgfortran -lquadmath
+FLIBS =  -L/usr/lib/gcc/x86_64-linux-gnu/13 -L/usr/lib/gcc/x86_64-linux-gnu/13/../../../x86_64-linux-gnu -L/usr/lib/gcc/x86_64-linux-gnu/13/../../../../lib -L/lib/x86_64-linux-gnu -L/lib/../lib -L/usr/lib/x86_64-linux-gnu -L/usr/lib/../lib -L/usr/lib/gcc/x86_64-linux-gnu/13/../../.. -lgfortran -lm -lquadmath
 GREP = /usr/bin/grep
 INDENT = 
 INSTALL = /usr/bin/install -c
@@ -256,32 +256,32 @@ INSTALL_PROGRAM = ${INSTALL}
 INSTALL_SCRIPT = ${INSTALL}
 INSTALL_STRIP_PROGRAM = $(install_sh) -c -s
 KCVI_CFLAGS = 
-LD = /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/ld
+LD = /usr/bin/ld -m elf_x86_64
 LDFLAGS = 
 LIBOBJS = 
 LIBQUADMATH = 
 LIBS = -lm 
 LIBTOOL = $(SHELL) $(top_builddir)/libtool
-LIPO = lipo
+LIPO = 
 LN_S = ln -s
 LTLIBOBJS = 
 LT_SYS_LIBRARY_PATH = 
 MAINT = #
-MAKEINFO = ${SHELL} '/Users/valentijn/dev/c++/cloudbuster/fftw-3.3.10/missing' makeinfo
+MAKEINFO = ${SHELL} '/home/valentijn/dev/cpp/cloudbuster/fairchild/fftw-3.3.10/missing' makeinfo
 MANIFEST_TOOL = :
-MKDIR_P = .././install-sh -c -d
+MKDIR_P = /usr/bin/mkdir -p
 MPICC = 
 MPILIBS = 
 MPIRUN = 
 NEON_CFLAGS = 
-NM = /usr/local/opt/binutils/bin/nm -B
-NMEDIT = nmedit
+NM = /usr/bin/nm -B
+NMEDIT = 
 OBJDUMP = objdump
 OBJEXT = o
 OCAMLBUILD = 
 OPENMP_CFLAGS = 
-OTOOL = otool
-OTOOL64 = :
+OTOOL = 
+OTOOL64 = 
 PACKAGE = fftw
 PACKAGE_BUGREPORT = fftw@fftw.org
 PACKAGE_NAME = fftw
@@ -291,8 +291,8 @@ PACKAGE_URL =
 PACKAGE_VERSION = 3.3.10
 PATH_SEPARATOR = :
 POW_LIB = 
-PRECISION = d
-PREC_SUFFIX = 
+PRECISION = s
+PREC_SUFFIX = f
 PTHREAD_CC = 
 PTHREAD_CFLAGS = 
 PTHREAD_LIBS = 
@@ -300,21 +300,21 @@ RANLIB = ranlib
 SED = /usr/bin/sed
 SET_MAKE = 
 SHARED_VERSION_INFO = 9:10:6
-SHELL = /bin/sh
+SHELL = /bin/bash
 SSE2_CFLAGS = 
 STACK_ALIGN_CFLAGS = 
 STRIP = strip
 THREADLIBS = 
 VERSION = 3.3.10
 VSX_CFLAGS = 
-abs_builddir = /Users/valentijn/dev/c++/cloudbuster/fftw-3.3.10/tools
-abs_srcdir = /Users/valentijn/dev/c++/cloudbuster/fftw-3.3.10/tools
-abs_top_builddir = /Users/valentijn/dev/c++/cloudbuster/fftw-3.3.10
-abs_top_srcdir = /Users/valentijn/dev/c++/cloudbuster/fftw-3.3.10
+abs_builddir = /home/valentijn/dev/cpp/cloudbuster/fairchild/fftw-3.3.10/tools
+abs_srcdir = /home/valentijn/dev/cpp/cloudbuster/fairchild/fftw-3.3.10/tools
+abs_top_builddir = /home/valentijn/dev/cpp/cloudbuster/fairchild/fftw-3.3.10
+abs_top_srcdir = /home/valentijn/dev/cpp/cloudbuster/fairchild/fftw-3.3.10
 ac_ct_AR = ar
 ac_ct_CC = gcc
 ac_ct_DUMPBIN = 
-ac_ct_F77 = gfortran
+ac_ct_F77 = f77
 acx_pthread_config = 
 am__include = include
 am__leading_dot = .
@@ -322,26 +322,26 @@ am__quote =
 am__tar = $${TAR-tar} chof - "$$tardir"
 am__untar = $${TAR-tar} xf -
 bindir = ${exec_prefix}/bin
-build = x86_64-apple-darwin23.6.0
+build = x86_64-pc-linux-gnu
 build_alias = 
 build_cpu = x86_64
-build_os = darwin23.6.0
-build_vendor = apple
+build_os = linux-gnu
+build_vendor = pc
 builddir = .
 datadir = ${datarootdir}
 datarootdir = ${prefix}/share
 docdir = ${datarootdir}/doc/${PACKAGE_TARNAME}
 dvidir = ${docdir}
 exec_prefix = ${prefix}
-host = x86_64-apple-darwin23.6.0
+host = x86_64-pc-linux-gnu
 host_alias = 
 host_cpu = x86_64
-host_os = darwin23.6.0
-host_vendor = apple
+host_os = linux-gnu
+host_vendor = pc
 htmldir = ${docdir}
 includedir = ${prefix}/include
 infodir = ${datarootdir}/info
-install_sh = ${SHELL} /Users/valentijn/dev/c++/cloudbuster/fftw-3.3.10/install-sh
+install_sh = ${SHELL} /home/valentijn/dev/cpp/cloudbuster/fairchild/fftw-3.3.10/install-sh
 libdir = ${exec_prefix}/lib
 libexecdir = ${exec_prefix}/libexec
 localedir = ${datarootdir}/locale
@@ -364,18 +364,18 @@ top_builddir = ..
 top_srcdir = ..
 AM_CPPFLAGS = -I $(top_srcdir)
 bin_SCRIPTS = fftw-wisdom-to-conf
-BUILT_SOURCES = fftw-wisdom-to-conf fftw-wisdom.1
+BUILT_SOURCES = fftw-wisdom-to-conf fftwf-wisdom.1
 EXTRA_DIST = fftw-wisdom-to-conf.in
-dist_man_MANS = fftw-wisdom-to-conf.1 fftw-wisdom.1
+dist_man_MANS = fftw-wisdom-to-conf.1 fftwf-wisdom.1
 EXTRA_MANS = fftw_wisdom.1.in
-#fftw_wisdom_CFLAGS = $(OPENMP_CFLAGS)
-#fftw_wisdom_CFLAGS = $(PTHREAD_CFLAGS)
-#LIBFFTWTHREADS = $(top_builddir)/threads/libfftw3_threads.la
-#LIBFFTWTHREADS = $(top_builddir)/threads/libfftw3_omp.la
-fftw_wisdom_SOURCES = fftw-wisdom.c
-fftw_wisdom_LDADD = $(top_builddir)/tests/bench-bench.o	\
+#fftwf_wisdom_CFLAGS = $(OPENMP_CFLAGS)
+#fftwf_wisdom_CFLAGS = $(PTHREAD_CFLAGS)
+#LIBFFTWTHREADS = $(top_builddir)/threads/libfftw3f_threads.la
+#LIBFFTWTHREADS = $(top_builddir)/threads/libfftw3f_omp.la
+fftwf_wisdom_SOURCES = fftw-wisdom.c
+fftwf_wisdom_LDADD = $(top_builddir)/tests/bench-bench.o	\
 $(top_builddir)/tests/bench-fftw-bench.o $(LIBFFTWTHREADS)	\
-$(top_builddir)/libfftw3.la			\
+$(top_builddir)/libfftw3f.la			\
 $(top_builddir)/libbench2/libbench2.a $(THREADLIBS)
 
 all: $(BUILT_SOURCES)
@@ -466,9 +466,9 @@ clean-binPROGRAMS:
 	echo " rm -f" $$list; \
 	rm -f $$list
 
-fftw-wisdom$(EXEEXT): $(fftw_wisdom_OBJECTS) $(fftw_wisdom_DEPENDENCIES) $(EXTRA_fftw_wisdom_DEPENDENCIES) 
-	@rm -f fftw-wisdom$(EXEEXT)
-	$(AM_V_CCLD)$(fftw_wisdom_LINK) $(fftw_wisdom_OBJECTS) $(fftw_wisdom_LDADD) $(LIBS)
+fftwf-wisdom$(EXEEXT): $(fftwf_wisdom_OBJECTS) $(fftwf_wisdom_DEPENDENCIES) $(EXTRA_fftwf_wisdom_DEPENDENCIES) 
+	@rm -f fftwf-wisdom$(EXEEXT)
+	$(AM_V_CCLD)$(fftwf_wisdom_LINK) $(fftwf_wisdom_OBJECTS) $(fftwf_wisdom_LDADD) $(LIBS)
 install-binSCRIPTS: $(bin_SCRIPTS)
 	@$(NORMAL_INSTALL)
 	@list='$(bin_SCRIPTS)'; test -n "$(bindir)" || list=; \
@@ -511,7 +511,7 @@ mostlyclean-compile:
 distclean-compile:
 	-rm -f *.tab.c
 
-include ./$(DEPDIR)/fftw_wisdom-fftw-wisdom.Po # am--include-marker
+include ./$(DEPDIR)/fftwf_wisdom-fftw-wisdom.Po # am--include-marker
 
 $(am__depfiles_remade):
 	@$(MKDIR_P) $(@D)
@@ -540,19 +540,19 @@ am--depfiles: $(am__depfiles_remade)
 #	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) \
 #	$(AM_V_CC_no)$(LTCOMPILE) -c -o $@ $<
 
-fftw_wisdom-fftw-wisdom.o: fftw-wisdom.c
-	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(fftw_wisdom_CFLAGS) $(CFLAGS) -MT fftw_wisdom-fftw-wisdom.o -MD -MP -MF $(DEPDIR)/fftw_wisdom-fftw-wisdom.Tpo -c -o fftw_wisdom-fftw-wisdom.o `test -f 'fftw-wisdom.c' || echo '$(srcdir)/'`fftw-wisdom.c
-	$(AM_V_at)$(am__mv) $(DEPDIR)/fftw_wisdom-fftw-wisdom.Tpo $(DEPDIR)/fftw_wisdom-fftw-wisdom.Po
-#	$(AM_V_CC)source='fftw-wisdom.c' object='fftw_wisdom-fftw-wisdom.o' libtool=no \
+fftwf_wisdom-fftw-wisdom.o: fftw-wisdom.c
+	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(fftwf_wisdom_CFLAGS) $(CFLAGS) -MT fftwf_wisdom-fftw-wisdom.o -MD -MP -MF $(DEPDIR)/fftwf_wisdom-fftw-wisdom.Tpo -c -o fftwf_wisdom-fftw-wisdom.o `test -f 'fftw-wisdom.c' || echo '$(srcdir)/'`fftw-wisdom.c
+	$(AM_V_at)$(am__mv) $(DEPDIR)/fftwf_wisdom-fftw-wisdom.Tpo $(DEPDIR)/fftwf_wisdom-fftw-wisdom.Po
+#	$(AM_V_CC)source='fftw-wisdom.c' object='fftwf_wisdom-fftw-wisdom.o' libtool=no \
 #	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) \
-#	$(AM_V_CC_no)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(fftw_wisdom_CFLAGS) $(CFLAGS) -c -o fftw_wisdom-fftw-wisdom.o `test -f 'fftw-wisdom.c' || echo '$(srcdir)/'`fftw-wisdom.c
+#	$(AM_V_CC_no)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(fftwf_wisdom_CFLAGS) $(CFLAGS) -c -o fftwf_wisdom-fftw-wisdom.o `test -f 'fftw-wisdom.c' || echo '$(srcdir)/'`fftw-wisdom.c
 
-fftw_wisdom-fftw-wisdom.obj: fftw-wisdom.c
-	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(fftw_wisdom_CFLAGS) $(CFLAGS) -MT fftw_wisdom-fftw-wisdom.obj -MD -MP -MF $(DEPDIR)/fftw_wisdom-fftw-wisdom.Tpo -c -o fftw_wisdom-fftw-wisdom.obj `if test -f 'fftw-wisdom.c'; then $(CYGPATH_W) 'fftw-wisdom.c'; else $(CYGPATH_W) '$(srcdir)/fftw-wisdom.c'; fi`
-	$(AM_V_at)$(am__mv) $(DEPDIR)/fftw_wisdom-fftw-wisdom.Tpo $(DEPDIR)/fftw_wisdom-fftw-wisdom.Po
-#	$(AM_V_CC)source='fftw-wisdom.c' object='fftw_wisdom-fftw-wisdom.obj' libtool=no \
+fftwf_wisdom-fftw-wisdom.obj: fftw-wisdom.c
+	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(fftwf_wisdom_CFLAGS) $(CFLAGS) -MT fftwf_wisdom-fftw-wisdom.obj -MD -MP -MF $(DEPDIR)/fftwf_wisdom-fftw-wisdom.Tpo -c -o fftwf_wisdom-fftw-wisdom.obj `if test -f 'fftw-wisdom.c'; then $(CYGPATH_W) 'fftw-wisdom.c'; else $(CYGPATH_W) '$(srcdir)/fftw-wisdom.c'; fi`
+	$(AM_V_at)$(am__mv) $(DEPDIR)/fftwf_wisdom-fftw-wisdom.Tpo $(DEPDIR)/fftwf_wisdom-fftw-wisdom.Po
+#	$(AM_V_CC)source='fftw-wisdom.c' object='fftwf_wisdom-fftw-wisdom.obj' libtool=no \
 #	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) \
-#	$(AM_V_CC_no)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(fftw_wisdom_CFLAGS) $(CFLAGS) -c -o fftw_wisdom-fftw-wisdom.obj `if test -f 'fftw-wisdom.c'; then $(CYGPATH_W) 'fftw-wisdom.c'; else $(CYGPATH_W) '$(srcdir)/fftw-wisdom.c'; fi`
+#	$(AM_V_CC_no)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(fftwf_wisdom_CFLAGS) $(CFLAGS) -c -o fftwf_wisdom-fftw-wisdom.obj `if test -f 'fftw-wisdom.c'; then $(CYGPATH_W) 'fftw-wisdom.c'; else $(CYGPATH_W) '$(srcdir)/fftw-wisdom.c'; fi`
 
 mostlyclean-libtool:
 	-rm -f *.lo
@@ -688,7 +688,7 @@ clean: clean-am
 clean-am: clean-binPROGRAMS clean-generic clean-libtool mostlyclean-am
 
 distclean: distclean-am
-		-rm -f ./$(DEPDIR)/fftw_wisdom-fftw-wisdom.Po
+		-rm -f ./$(DEPDIR)/fftwf_wisdom-fftw-wisdom.Po
 	-rm -f Makefile
 distclean-am: clean-am distclean-compile distclean-generic
 
@@ -733,7 +733,7 @@ install-ps-am:
 installcheck-am:
 
 maintainer-clean: maintainer-clean-am
-		-rm -f ./$(DEPDIR)/fftw_wisdom-fftw-wisdom.Po
+		-rm -f ./$(DEPDIR)/fftwf_wisdom-fftw-wisdom.Po
 	-rm -f Makefile
 maintainer-clean-am: distclean-am maintainer-clean-generic
 
@@ -773,7 +773,7 @@ uninstall-man: uninstall-man1
 
 .PRECIOUS: Makefile
 
-fftw-wisdom.1: fftw_wisdom.1
+fftwf-wisdom.1: fftw_wisdom.1
 	rm -f $@
 	cp fftw_wisdom.1 $@
 

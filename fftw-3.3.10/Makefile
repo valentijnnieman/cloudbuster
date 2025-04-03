@@ -87,8 +87,8 @@ POST_INSTALL = :
 NORMAL_UNINSTALL = :
 PRE_UNINSTALL = :
 POST_UNINSTALL = :
-build_triplet = x86_64-apple-darwin23.6.0
-host_triplet = x86_64-apple-darwin23.6.0
+build_triplet = x86_64-pc-linux-gnu
+host_triplet = x86_64-pc-linux-gnu
 subdir = .
 ACLOCAL_M4 = $(top_srcdir)/aclocal.m4
 am__aclocal_m4_deps = $(top_srcdir)/m4/acx_mpi.m4 \
@@ -142,7 +142,7 @@ am__uninstall_files_from_dir = { \
 am__installdirs = "$(DESTDIR)$(libdir)" "$(DESTDIR)$(cmakedir)" \
 	"$(DESTDIR)$(pkgconfigdir)"
 LTLIBRARIES = $(lib_LTLIBRARIES)
-libfftw3_la_DEPENDENCIES = kernel/libkernel.la \
+libfftw3f_la_DEPENDENCIES = kernel/libkernel.la \
 	dft/libdft.la dft/scalar/libdft_scalar.la \
 	dft/scalar/codelets/libdft_scalar_codelets.la rdft/librdft.la \
 	rdft/scalar/librdft_scalar.la \
@@ -154,16 +154,16 @@ libfftw3_la_DEPENDENCIES = kernel/libkernel.la \
 	$(NEON_LIBS) $(KCVI_LIBS) $(AVX512_LIBS) \
 	$(GENERIC_SIMD128_LIBS) $(GENERIC_SIMD256_LIBS) \
 	$(COMBINED_THREADLIBS)
-am_libfftw3_la_OBJECTS =
-libfftw3_la_OBJECTS =  \
-	$(am_libfftw3_la_OBJECTS)
+am_libfftw3f_la_OBJECTS =
+libfftw3f_la_OBJECTS =  \
+	$(am_libfftw3f_la_OBJECTS)
 AM_V_lt = $(am__v_lt_$(V))
 am__v_lt_ = $(am__v_lt_$(AM_DEFAULT_VERBOSITY))
 am__v_lt_0 = --silent
 am__v_lt_1 = 
-libfftw3_la_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CC \
+libfftw3f_la_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CC \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CCLD) \
-	$(AM_CFLAGS) $(CFLAGS) $(libfftw3_la_LDFLAGS) \
+	$(AM_CFLAGS) $(CFLAGS) $(libfftw3f_la_LDFLAGS) \
 	$(LDFLAGS) -o $@
 AM_V_P = $(am__v_P_$(V))
 am__v_P_ = $(am__v_P_$(AM_DEFAULT_VERBOSITY))
@@ -196,8 +196,8 @@ AM_V_CCLD = $(am__v_CCLD_$(V))
 am__v_CCLD_ = $(am__v_CCLD_$(AM_DEFAULT_VERBOSITY))
 am__v_CCLD_0 = @echo "  CCLD    " $@;
 am__v_CCLD_1 = 
-SOURCES = $(libfftw3_la_SOURCES)
-DIST_SOURCES = $(libfftw3_la_SOURCES)
+SOURCES = $(libfftw3f_la_SOURCES)
+DIST_SOURCES = $(libfftw3f_la_SOURCES)
 RECURSIVE_TARGETS = all-recursive check-recursive cscopelist-recursive \
 	ctags-recursive dvi-recursive html-recursive info-recursive \
 	install-data-recursive install-dvi-recursive \
@@ -291,24 +291,24 @@ distuninstallcheck_listfiles = find . -type f -print
 am__distuninstallcheck_listfiles = $(distuninstallcheck_listfiles) \
   | sed 's|^\./|$(prefix)/|' | grep -v '$(infodir)/dir$$'
 distcleancheck_listfiles = find . -type f -print
-ACLOCAL = ${SHELL} '/Users/valentijn/dev/c++/cloudbuster/fftw-3.3.10/missing' aclocal-1.16
+ACLOCAL = ${SHELL} '/home/valentijn/dev/cpp/cloudbuster/fairchild/fftw-3.3.10/missing' aclocal-1.16
 ALLOCA = 
 ALTIVEC_CFLAGS = 
 AMTAR = $${TAR-tar}
 AM_DEFAULT_VERBOSITY = 1
 AR = ar
 AS = as
-AUTOCONF = ${SHELL} '/Users/valentijn/dev/c++/cloudbuster/fftw-3.3.10/missing' autoconf
-AUTOHEADER = ${SHELL} '/Users/valentijn/dev/c++/cloudbuster/fftw-3.3.10/missing' autoheader
-AUTOMAKE = ${SHELL} '/Users/valentijn/dev/c++/cloudbuster/fftw-3.3.10/missing' automake-1.16
+AUTOCONF = ${SHELL} '/home/valentijn/dev/cpp/cloudbuster/fairchild/fftw-3.3.10/missing' autoconf
+AUTOHEADER = ${SHELL} '/home/valentijn/dev/cpp/cloudbuster/fairchild/fftw-3.3.10/missing' autoheader
+AUTOMAKE = ${SHELL} '/home/valentijn/dev/cpp/cloudbuster/fairchild/fftw-3.3.10/missing' automake-1.16
 AVX2_CFLAGS = 
 AVX512_CFLAGS = 
 AVX_128_FMA_CFLAGS = 
 AVX_CFLAGS = 
-AWK = awk
+AWK = mawk
 CC = gcc
 CCDEPMODE = depmode=gcc3
-CFLAGS = -O3 -fomit-frame-pointer -mtune=native -fstrict-aliasing
+CFLAGS = -O3 -fomit-frame-pointer -mtune=native -malign-double -fstrict-aliasing -fno-schedule-insns
 CHECK_PL_OPTS = 
 CPP = gcc -E
 CPPFLAGS = 
@@ -318,17 +318,17 @@ C_MPI_FINT =
 DEFS = -DHAVE_CONFIG_H
 DEPDIR = .deps
 DLLTOOL = dlltool
-DSYMUTIL = dsymutil
+DSYMUTIL = 
 DUMPBIN = 
-ECHO_C = \c
-ECHO_N = 
+ECHO_C = 
+ECHO_N = -n
 ECHO_T = 
 EGREP = /usr/bin/grep -E
 EXEEXT = 
-F77 = gfortran
+F77 = f77
 FFLAGS = -g -O2
 FGREP = /usr/bin/grep -F
-FLIBS =  -L/usr/local/Cellar/gcc/14.1.0_2/bin/../lib/gcc/current/gcc/x86_64-apple-darwin23/14 -L/usr/local/Cellar/gcc/14.1.0_2/bin/../lib/gcc/current/gcc -L/usr/local/Cellar/gcc/14.1.0_2/bin/../lib/gcc/current/gcc/x86_64-apple-darwin23/14/../../.. -lemutls_w -lheapt_w -lgfortran -lquadmath
+FLIBS =  -L/usr/lib/gcc/x86_64-linux-gnu/13 -L/usr/lib/gcc/x86_64-linux-gnu/13/../../../x86_64-linux-gnu -L/usr/lib/gcc/x86_64-linux-gnu/13/../../../../lib -L/lib/x86_64-linux-gnu -L/lib/../lib -L/usr/lib/x86_64-linux-gnu -L/usr/lib/../lib -L/usr/lib/gcc/x86_64-linux-gnu/13/../../.. -lgfortran -lm -lquadmath
 GREP = /usr/bin/grep
 INDENT = 
 INSTALL = /usr/bin/install -c
@@ -337,32 +337,32 @@ INSTALL_PROGRAM = ${INSTALL}
 INSTALL_SCRIPT = ${INSTALL}
 INSTALL_STRIP_PROGRAM = $(install_sh) -c -s
 KCVI_CFLAGS = 
-LD = /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/ld
+LD = /usr/bin/ld -m elf_x86_64
 LDFLAGS = 
 LIBOBJS = 
 LIBQUADMATH = 
 LIBS = -lm 
 LIBTOOL = $(SHELL) $(top_builddir)/libtool
-LIPO = lipo
+LIPO = 
 LN_S = ln -s
 LTLIBOBJS = 
 LT_SYS_LIBRARY_PATH = 
 MAINT = #
-MAKEINFO = ${SHELL} '/Users/valentijn/dev/c++/cloudbuster/fftw-3.3.10/missing' makeinfo
+MAKEINFO = ${SHELL} '/home/valentijn/dev/cpp/cloudbuster/fairchild/fftw-3.3.10/missing' makeinfo
 MANIFEST_TOOL = :
-MKDIR_P = ./install-sh -c -d
+MKDIR_P = /usr/bin/mkdir -p
 MPICC = 
 MPILIBS = 
 MPIRUN = 
 NEON_CFLAGS = 
-NM = /usr/local/opt/binutils/bin/nm -B
-NMEDIT = nmedit
+NM = /usr/bin/nm -B
+NMEDIT = 
 OBJDUMP = objdump
 OBJEXT = o
 OCAMLBUILD = 
 OPENMP_CFLAGS = 
-OTOOL = otool
-OTOOL64 = :
+OTOOL = 
+OTOOL64 = 
 PACKAGE = fftw
 PACKAGE_BUGREPORT = fftw@fftw.org
 PACKAGE_NAME = fftw
@@ -372,8 +372,8 @@ PACKAGE_URL =
 PACKAGE_VERSION = 3.3.10
 PATH_SEPARATOR = :
 POW_LIB = 
-PRECISION = d
-PREC_SUFFIX = 
+PRECISION = s
+PREC_SUFFIX = f
 PTHREAD_CC = 
 PTHREAD_CFLAGS = 
 PTHREAD_LIBS = 
@@ -381,21 +381,21 @@ RANLIB = ranlib
 SED = /usr/bin/sed
 SET_MAKE = 
 SHARED_VERSION_INFO = 9:10:6
-SHELL = /bin/sh
+SHELL = /bin/bash
 SSE2_CFLAGS = 
 STACK_ALIGN_CFLAGS = 
 STRIP = strip
 THREADLIBS = 
 VERSION = 3.3.10
 VSX_CFLAGS = 
-abs_builddir = /Users/valentijn/dev/c++/cloudbuster/fftw-3.3.10
-abs_srcdir = /Users/valentijn/dev/c++/cloudbuster/fftw-3.3.10
-abs_top_builddir = /Users/valentijn/dev/c++/cloudbuster/fftw-3.3.10
-abs_top_srcdir = /Users/valentijn/dev/c++/cloudbuster/fftw-3.3.10
+abs_builddir = /home/valentijn/dev/cpp/cloudbuster/fairchild/fftw-3.3.10
+abs_srcdir = /home/valentijn/dev/cpp/cloudbuster/fairchild/fftw-3.3.10
+abs_top_builddir = /home/valentijn/dev/cpp/cloudbuster/fairchild/fftw-3.3.10
+abs_top_srcdir = /home/valentijn/dev/cpp/cloudbuster/fairchild/fftw-3.3.10
 ac_ct_AR = ar
 ac_ct_CC = gcc
 ac_ct_DUMPBIN = 
-ac_ct_F77 = gfortran
+ac_ct_F77 = f77
 acx_pthread_config = 
 am__include = include
 am__leading_dot = .
@@ -403,26 +403,26 @@ am__quote =
 am__tar = $${TAR-tar} chof - "$$tardir"
 am__untar = $${TAR-tar} xf -
 bindir = ${exec_prefix}/bin
-build = x86_64-apple-darwin23.6.0
+build = x86_64-pc-linux-gnu
 build_alias = 
 build_cpu = x86_64
-build_os = darwin23.6.0
-build_vendor = apple
+build_os = linux-gnu
+build_vendor = pc
 builddir = .
 datadir = ${datarootdir}
 datarootdir = ${prefix}/share
 docdir = ${datarootdir}/doc/${PACKAGE_TARNAME}
 dvidir = ${docdir}
 exec_prefix = ${prefix}
-host = x86_64-apple-darwin23.6.0
+host = x86_64-pc-linux-gnu
 host_alias = 
 host_cpu = x86_64
-host_os = darwin23.6.0
-host_vendor = apple
+host_os = linux-gnu
+host_vendor = pc
 htmldir = ${docdir}
 includedir = ${prefix}/include
 infodir = ${datarootdir}/info
-install_sh = ${SHELL} /Users/valentijn/dev/c++/cloudbuster/fftw-3.3.10/install-sh
+install_sh = ${SHELL} /home/valentijn/dev/cpp/cloudbuster/fairchild/fftw-3.3.10/install-sh
 libdir = ${exec_prefix}/lib
 libexecdir = ${exec_prefix}/libexec
 localedir = ${datarootdir}/locale
@@ -444,15 +444,15 @@ top_build_prefix =
 top_builddir = .
 top_srcdir = .
 OPTIONS_AUTOMAKE = gnu
-lib_LTLIBRARIES = libfftw3.la
+lib_LTLIBRARIES = libfftw3f.la
 GENFFT = 
 
-# pkgincludedir = $(includedir)/fftw3
+# pkgincludedir = $(includedir)/fftw3f
 # nodist_pkginclude_HEADERS = config.h
 
 # recompile genfft if maintainer mode is true
 #GENFFT = genfft
-#EXTRA_libfftw3_la_DEPENDENCIES = assert-shared-version-info
+#EXTRA_libfftw3f_la_DEPENDENCIES = assert-shared-version-info
 ACLOCAL_AMFLAGS = -I m4
 CHICKEN_EGG = . threads
 
@@ -516,9 +516,9 @@ SIMD_LIBS = simd-support/libsimd_support.la
 #GENERIC_SIMD256_LIBS = dft/simd/generic-simd256/libdft_generic_simd256_codelets.la      \
 #rdft/simd/generic-simd256/librdft_generic_simd256_codelets.la
 
-##COMBINED_THREADLIBS = threads/libfftw3_threads.la
-libfftw3_la_SOURCES = 
-libfftw3_la_LIBADD = \
+##COMBINED_THREADLIBS = threads/libfftw3f_threads.la
+libfftw3f_la_SOURCES = 
+libfftw3f_la_LIBADD = \
 	kernel/libkernel.la				\
 	dft/libdft.la					\
 	dft/scalar/libdft_scalar.la			\
@@ -536,18 +536,18 @@ libfftw3_la_LIBADD = \
         $(GENERIC_SIMD128_LIBS) $(GENERIC_SIMD256_LIBS) \
 	$(COMBINED_THREADLIBS)
 
-libfftw3_la_LDFLAGS = -no-undefined -version-info	\
+libfftw3f_la_LDFLAGS = -no-undefined -version-info	\
 9:10:6  $(ENVIRONMENT_LIBFFTW3_LDFLAGS)
 
 
 # cannot use -no-undefined since dependent on libquadmath
-#libfftw3_la_LDFLAGS = -version-info 9:10:6 $(ENVIRONMENT_LIBFFTW3_LDFLAGS)
+#libfftw3f_la_LDFLAGS = -version-info 9:10:6 $(ENVIRONMENT_LIBFFTW3_LDFLAGS)
 pkgconfigdir = $(libdir)/pkgconfig
-pkgconfig_DATA = fftw3.pc
+pkgconfig_DATA = fftw3f.pc
 cmakedir = $(libdir)/cmake/fftw3
-cmake_DATA = FFTW3Config.cmake FFTW3ConfigVersion.cmake
+cmake_DATA = FFTW3fConfig.cmake FFTW3fConfigVersion.cmake
 WISDOM_DIR = /etc/fftw
-WISDOM = wisdom
+WISDOM = wisdomf
 WISDOM_TIME = 12 # default to 12-hour limit, i.e. overnight
 WISDOM_FLAGS = --verbose --canonical --time-limit=$(WISDOM_TIME)
 all: config.h
@@ -640,8 +640,8 @@ clean-libLTLIBRARIES:
 	  rm -f $${locs}; \
 	}
 
-libfftw3.la: $(libfftw3_la_OBJECTS) $(libfftw3_la_DEPENDENCIES) $(EXTRA_libfftw3_la_DEPENDENCIES) 
-	$(AM_V_CCLD)$(libfftw3_la_LINK) -rpath $(libdir) $(libfftw3_la_OBJECTS) $(libfftw3_la_LIBADD) $(LIBS)
+libfftw3f.la: $(libfftw3f_la_OBJECTS) $(libfftw3f_la_DEPENDENCIES) $(EXTRA_libfftw3f_la_DEPENDENCIES) 
+	$(AM_V_CCLD)$(libfftw3f_la_LINK) -rpath $(libdir) $(libfftw3f_la_OBJECTS) $(libfftw3f_la_LIBADD) $(LIBS)
 
 mostlyclean-compile:
 	-rm -f *.$(OBJEXT)
@@ -1139,22 +1139,22 @@ uninstall-am: uninstall-cmakeDATA uninstall-libLTLIBRARIES \
 .PRECIOUS: Makefile
 
 
-fftw3.pc: fftw.pc
-	cp -f fftw.pc fftw3.pc
+fftw3f.pc: fftw.pc
+	cp -f fftw.pc fftw3f.pc
 
-FFTW3Config.cmake: $(top_srcdir)/FFTW3Config.cmake.in
+FFTW3fConfig.cmake: $(top_srcdir)/FFTW3Config.cmake.in
 	$(SED) \
-		-e 's|[@]PREC_SUFFIX@||g' \
+		-e 's|[@]PREC_SUFFIX@|f|g' \
 		-e 's|[@]CMAKE_INSTALL_FULL_LIBDIR@|$(libdir)|g' \
 		-e 's|[@]CMAKE_INSTALL_FULL_INCLUDEDIR@|$(includedir)|g' \
 		$(top_srcdir)/FFTW3Config.cmake.in > $@
-FFTW3ConfigVersion.cmake: $(top_srcdir)/FFTW3ConfigVersion.cmake.in
+FFTW3fConfigVersion.cmake: $(top_srcdir)/FFTW3ConfigVersion.cmake.in
 	$(SED) \
 		-e 's|[@]FFTW_VERSION@|3.3.10|g' \
 		$(top_srcdir)/FFTW3ConfigVersion.cmake.in > $@
 
 wisdom:
-	tools/fftw-wisdom -o $@ $(WISDOM_FLAGS)
+	tools/fftwf-wisdom -o $@ $(WISDOM_FLAGS)
 
 install-wisdom: wisdom
 	$(mkinstalldirs) $(WISDOM_DIR)
