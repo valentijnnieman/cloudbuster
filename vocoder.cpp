@@ -6,7 +6,7 @@ void Vocoder::print_stats() {
   // std::cout << "window[0]: " << window[0] << std::endl;
 }
 Vocoder::Vocoder(const std::string &filename, int N, int window_size, int hop_size_div, float samplerate)
-    : it(it), N(N), window_size(window_size), hop_size_div(hop_size_div), calculated(false) {
+    : it(it), N(N), window_size(window_size), hop_size_div(hop_size_div), calculated(false), lowpass(BiquadLowpass(samplerate, N)) {
   /* Open the soundfile */
   file = sf_open(filename.c_str(), SFM_READ, &info);
   samples.resize(info.frames * info.channels);
@@ -189,9 +189,9 @@ float Vocoder::get_sample(int note, int n) {
       _buffer[i] = (sample_idx < resampled.size() ? window[i] * resampled[sample_idx] : 0.0f);
     }
 
-    auto filtered_buffer = lowpass_filter(_buffer, (_fft_buffer.size() * pitch_ratio) / 2);
+    /*auto filtered_buffer = lowpass_filter(_buffer, (_fft_buffer.size() * pitch_ratio) / 2);*/
     // FFT
-    forward_fft(filtered_buffer.data(), reinterpret_cast<std::complex<float>*>(_fft_buffer.data()));
+    forward_fft(_buffer.data(), reinterpret_cast<std::complex<float>*>(_fft_buffer.data()));
 
     // Phase vocoder processing
     for (size_t i = 0; i < _fft_buffer.size(); i++) {
@@ -241,7 +241,7 @@ float Vocoder::get_sample(int note, int n) {
       size_t ix1 = ix;
       size_t ix2 = (ix + 1 < s) ? ix + 1 : s - 1;
       size_t ix3 = (ix + 2 < s) ? ix + 2 : s - 1;
-      _resampled[i] = cubic_interp(_buffer[ix0], _buffer[ix1], _buffer[ix2], _buffer[ix3], mu);
+      _resampled[i] = lowpass.process(cubic_interp(_buffer[ix0], _buffer[ix1], _buffer[ix2], _buffer[ix3], mu));
     }
 
     // low pass filter

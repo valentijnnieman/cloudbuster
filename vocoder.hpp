@@ -9,6 +9,7 @@
 #include <fftw3.h>
 #include <map>
 #include <samplerate.h>
+#include "biquad.hpp"
 
 class Vocoder {
 private:
@@ -33,6 +34,7 @@ private:
   std::vector<float> _phi;
   std::vector<std::complex<float>> _fft_buffer;
 
+  BiquadLowpass lowpass; // cutoff 5 kHz, Q = 0.707 (Butterworth)
 
   float cutoff;
 
