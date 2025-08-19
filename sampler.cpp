@@ -85,6 +85,10 @@ public:
     fftwf_destroy_plan(p);
     fftwf_destroy_plan(pi);
     free(file);
+
+    for(auto &[key, samples] : key_samples) {
+      delete samples;
+    }
   }
   void cleanup() {}
 
@@ -197,10 +201,10 @@ public:
     float r = div / freq;
     pitch_ratio = r;
 
-    std::cout << "calculating sample for note: " << note << std::endl;
-    std::vector<float> out_samples(samples.size() * 2, 0.0f);
+    std::cout << "calculating sample_stft for note: " << note << std::endl;
+    std::vector<float> out_samples(sig_len * 2, 0.0f);
     std::vector<float> *resampled =
-        new std::vector<float>(samples.size(), 0.0f);
+        new std::vector<float>(sig_len, 0.0f);
 
     std::vector<float> window = hanning(window_size, 0);
 
@@ -268,8 +272,8 @@ public:
     float r = div / freq;
     pitch_ratio = r;
 
-    std::cout << "calculating sample for note: " << note << std::endl;
-    std::vector<float> out_samples(samples.size() / pitch_ratio * 2, 0.0f);
+    std::cout << "calculating sample_pitch_shift for note: " << note << std::endl;
+    std::vector<float> out_samples((samples.size() * 2) / pitch_ratio, 0.0f);
     std::vector<float> *resampled =
         new std::vector<float>(samples.size(), 0.0f);
 

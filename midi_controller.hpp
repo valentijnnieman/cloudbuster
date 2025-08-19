@@ -1,6 +1,20 @@
 #pragma once
 #include "RtMidi.h"
-#include "sampler.cpp"
+/*#include "sampler.cpp"*/
+#include "vocoder.hpp"
+#include <thread>
+
+typedef struct {
+  SNDFILE *file;
+  SF_INFO info;
+  std::vector<std::shared_ptr<Vocoder>> voices;
+  std::vector<int> indices;
+  // std::vector<float> samples;
+  std::vector<int> notes;
+  int max;
+  int index;
+  int stln_voice;
+} callback_data_s;
 
 class MidiController {
 public:
@@ -12,36 +26,61 @@ public:
   static void callback(double deltatime, std::vector<unsigned char> *message,
                        void *userData) {
     int key = (int)message->at(1);
-    std::cout << key << " - ";
+    /*std::cout << key << " - ";*/
     int value = (int)message->at(0);
-    std::cout << value << std::endl;
+    /*std::cout << value << std::endl;*/
 
     callback_data_s *data = static_cast<callback_data_s *>(userData);
     if (value == 144) {
-      auto it = std::find_if(data->voices.begin(), data->voices.end(),
-                             [&](const std::shared_ptr<Sampler> s) {
-                               return !s->running && !s->stopping;
-                             });
-      if (it != data->voices.end()) {
-        auto s = *it;
-        if (s != nullptr) {
-          s->index = 0;
-          s->current_note = key;
-          s->running = true;
-        }
+      auto s = data->voices[data->stln_voice];
+      s->current_note = key;
+      s->clear();
+      s->running = true;
+      s->stopping = false;
+      data->stln_voice++;
+      if(data->stln_voice >= data->voices.size()-1) {
+        data->stln_voice = 0;
       }
+      /*auto it = std::find_if(data->voices.begin(), data->voices.end(),*/
+      /*                       [&](const std::shared_ptr<Vocoder> s) {*/
+      /*                         return !s->running;*/
+      /*                       });*/
+      /*if (it != data->voices.end()) { // if there is a free voice*/
+      /*  auto s = *it;*/
+      /*  if (s != nullptr) {*/
+      /*    if(s->current_note != key) {*/
+      /*      s->current_note = key;*/
+      /*      s->clear();*/
+      /*    }*/
+      /*    s->current_note = key;*/
+      /*    s->running = true;*/
+      /*    s->stopping = false;*/
+      /*  }*/
+      /*} else { // if there are no free voices*/
+      /*  auto s = data->voices[data->stln_voice];*/
+      /*  if (s != nullptr) {*/
+      /*    if(s->current_note != key) {*/
+      /*      s->current_note = key;*/
+      /*      s->clear();*/
+      /*    }*/
+      /*    s->running = true;*/
+      /*    s->stopping = false;*/
+      /**/
+      /*    data->stln_voice++;*/
+      /*    if(data->stln_voice >= data->voices.size()) {*/
+      /*      data->stln_voice = 0;*/
+      /*    }*/
+      /*  }*/
+      /*}*/
     }
     if (value == 128) {
       auto it = std::find_if(data->voices.begin(), data->voices.end(),
-                             [&, key](const std::shared_ptr<Sampler> s) {
-                               return s->running && !s->stopping &&
-                                      s->current_note == key;
+                             [&, key](const std::shared_ptr<Vocoder> s) {
+                               return s->current_note == key && s->running == true;
                              });
       if (it != data->voices.end()) {
         auto s = *it;
         if (s != nullptr) {
-          // s->index = 0;
-          s->running = false;
           s->stopping = true;
         }
       }

@@ -7,9 +7,12 @@
 #include <string.h>
 
 #include <vector>
+#include <samplerate.h>
+#include "sndfile.hh"
 
 #include "portaudio.h"
 
+#include "vocoder.hpp"
 #include "midi_controller.hpp"
 #include <cmath>
 #include <numbers>
@@ -17,39 +20,30 @@
 // #include <matplot/matplot.h>
 // using namespace matplot;
 
-#define FRAMES_PER_BUFFER (512)
-
 PaStream *stream;
+const float amp = 0.5f;
 
 static int callback(const void *input, void *output, unsigned long frameCount,
                     const PaStreamCallbackTimeInfo *timeInfo,
                     PaStreamCallbackFlags statusFlags, void *userData) {
+  frameCount *= 2;
   callback_data_s *data = (callback_data_s *)userData;
   float *out = (float *)output;
-  memset(out, 0, sizeof(float) * frameCount * 2);
+  memset(out, 0.0f, sizeof(float) * frameCount);
 
-  std::vector<float> buffer(frameCount * 2, 0.0f);
-  float amp = 1.0f / (float)data->voices.size();
-  // float amp = 0.5f;
-
-  for (auto sampler : data->voices) {
+  for (const auto& sampler : data->voices) {
     if (sampler->running && !sampler->stopping) {
-      std::vector<float> samples = sampler->get_samples(frameCount * 2, amp);
+      for (size_t i = 0; i < frameCount; i++) {
+        out[i] += sampler->get_sample(sampler->current_note, sampler->smpl_ptr+i);
+      }
+    }
+    if (sampler->stopping) {
+      for (size_t i = 0; i < frameCount; i++) {
+        out[i] += sampler->get_sample(sampler->current_note, sampler->smpl_ptr+i);
+      }
+    }
 
-      for (int i = 0; i < frameCount * 2; i++) {
-        buffer[i] += samples[i];
-      }
-    }
-    if (sampler->stopping && !sampler->running) {
-      std::vector<float> samples = sampler->get_samples(frameCount * 2, amp);
-      for (int i = 0; i < frameCount * 2; i++) {
-        buffer[i] += samples[i];
-      }
-      // }
-    }
-  }
-  for (int i = 0; i < frameCount * 2; i++) {
-    *out++ = buffer[i];
+    sampler->smpl_ptr += frameCount;
   }
 
   return paContinue;
@@ -81,6 +75,7 @@ int main(int argc, const char *argv[]) {
   bool instantaneous = false;
   int N = 1024;
   int window_size = 1024;
+  float fs = 8000.0;
   int min_note = 40;
   int max_note = 90;
   int hop_size_div = 8;
@@ -106,6 +101,11 @@ int main(int argc, const char *argv[]) {
     if (args[i] == "-h") {
       hop_size_div = stoi(args[i + 1]);
       std::cout << "[Sampler] hop size divide by: " << hop_size_div
+                << std::endl;
+    }
+    if (args[i] == "-fs") {
+      fs = stof(args[i + 1]);
+      std::cout << "[Sampler] sample rate: " << fs
                 << std::endl;
     }
     if (args[i] == "-min") {
@@ -153,13 +153,16 @@ int main(int argc, const char *argv[]) {
   }
 
   // SndfileHandle file;
-  Sampler sampler = Sampler(filename, N, window_size, hop_size_div);
+  /*Sampler sampler = Sampler(filename, N, window_size, hop_size_div);*/
+  Vocoder sampler = Vocoder(filename, N, window_size, hop_size_div, fs);
   sampler.PHI_UNWRAP = phi_unwrap;
   sampler.GONGO = gongo;
   sampler.INSTANTANEOUS = instantaneous;
 
   PaError error;
   callback_data_s data;
+
+  data.stln_voice = 0;
 
   MidiController ctrl;
 
@@ -172,12 +175,14 @@ int main(int argc, const char *argv[]) {
 
   ctrl.midiOut->openPort(midi_out);
 
+  signal(SIGINT, close_stream);
+
   std::cout << "copying samplers for voices..." << std::endl;
-  for (int j = 0; j < 32; j++) {
-    Sampler *s = new Sampler(sampler);
+  for (int j = 0; j < 8; j++) {
+    Vocoder *s = new Vocoder(sampler);
     s->it = j;
 
-    data.voices.push_back(std::shared_ptr<Sampler>(s));
+    data.voices.push_back(std::shared_ptr<Vocoder>(s));
   }
 
   /* init portaudio */
@@ -220,13 +225,13 @@ int main(int argc, const char *argv[]) {
 
   error =
       Pa_OpenStream(&stream, NULL, &outputParameters, /* &outputParameters, */
-                    44100, 256, paNoFlag, callback, &data);
+                    fs, 256, paNoFlag, callback, &data);
 
   if (error != paNoError) {
     fprintf(stderr, "Problem opening Default Stream\n");
     return 1;
   }
-
+  
   /* Start the stream */
   error = Pa_StartStream(stream);
   if (error != paNoError) {
@@ -234,31 +239,24 @@ int main(int argc, const char *argv[]) {
     return 1;
   }
 
-  std::cout << "calculating samples..." << std::endl;
-  for (int i = min_note; i < max_note; i++) {
-    if (pv) {
-      sampler.calculate_sample_pitch_shift(data, i);
-    }
-    if (!pv && stft) {
-      sampler.calculate_sample_stft(data, i);
-    }
-    if (!pv && !stft) {
-      sampler.calculate_sample(data, i);
-    }
+  /*std::cout << "calculating samples..." << std::endl;*/
+  /*for (int i = min_note; i < max_note; i++) {*/
+  /*  if (pv) {*/
+  /*    sampler.calculate_sample_pitch_shift(data, i);*/
+  /*  }*/
+  /*  if (!pv && stft) {*/
+  /*    sampler.calculate_sample_stft(data, i);*/
+  /*  }*/
+  /*  if (!pv && !stft) {*/
+  /*    sampler.calculate_sample(data, i);*/
+  /*  }*/
 
     // copy samples to all voices
-    for (auto s : data.voices) {
-      s->key_samples[i] = sampler.key_samples[i];
-    }
-  }
+    /*for (auto s : data.voices) {*/
+    /*  s->key_samples[i] = sampler.key_samples[i];*/
+    /*}*/
+  /*}*/
 
-  std::cout << "og size: " << sampler.samples.size() << std::endl;
-  ;
-  std::cout << "key samp size: " << sampler.key_samples[69]->size()
-            << std::endl;
-  ;
-
-  signal(SIGINT, close_stream);
   std::cout << "Done! opening stream..." << std::endl;
   /* Run until EOF is reached */
   while (Pa_IsStreamActive(stream)) {
