@@ -37,8 +37,8 @@ Vocoder::Vocoder(const std::string &filename, int N, int window_size, int hop_si
 
   sig_len = resampled.size();
 
-  fft_in = (float*)calloc(sig_len, sizeof(float));
-  fft_out = (fftwf_complex*)calloc(sig_len, sizeof(fftwf_complex));
+  fft_in = (float*)fftwf_alloc_real(sig_len);
+  fft_out = (fftwf_complex*)fftwf_alloc_complex(sig_len);
 
   p = fftwf_plan_dft_r2c_1d(N, fft_in, fft_out, FFTW_ESTIMATE);
   pi = fftwf_plan_dft_c2r_1d(N, fft_out, fft_in, FFTW_ESTIMATE);
@@ -57,7 +57,13 @@ void Vocoder::clear()
   float r = div / freq;
   pitch_ratio = r;
 
+  gain = 1.0f / sqrt(freq);
+
   out_samples = std::vector<float>((resampled.size() * pitch_ratio), 0.0f);
+  /*_buffer = std::vector<float>(window_size, 0.0f);*/
+  /*_phi = std::vector<float> (N / 2 + 1, 0.0f);*/
+  /*_fft_buffer = std::vector<std::complex<float>>(N / 2 + 1, 0.0f);*/
+
   calculated = false;
   _calculated_until = 0;
   read_ptr = 0;
@@ -167,13 +173,9 @@ float Vocoder::cubic_interp(float y0, float y1, float y2, float y3, float mu) {
   return a0 * mu * mu * mu + a1 * mu * mu + a2 * mu + a3;
 }
 
+
 // get the nth sample
 float Vocoder::get_sample(int note, int n) {
-  /*float freq = note_to_freq(note);*/
-  /*float div = 440.0f;*/
-  /*float r = div / freq;*/
-  /*pitch_ratio = r;*/
-
   if (n >= _calculated_until) {
     // Prepare new window
     size_t resampled_size = static_cast<size_t>(window_size * pitch_ratio);
@@ -229,7 +231,7 @@ float Vocoder::get_sample(int note, int n) {
     ifft(_buffer.data(), reinterpret_cast<std::complex<float>*>(_fft_buffer.data()));
 
     // Resample
-    size_t s = _fft_buffer.size();
+    size_t s = _buffer.size()-1;
     size_t L = static_cast<size_t>(std::floor(s * pitch_ratio));
     for (size_t i = 0; i < L; i++) {
       /*float x = static_cast<float>(i) * s / L;*/
@@ -237,10 +239,12 @@ float Vocoder::get_sample(int note, int n) {
       size_t ix = static_cast<size_t>(std::floor(x));
       float mu = x - ix;
       // Clamp indices to valid range
-      size_t ix0 = (ix == 0) ? 0 : ix - 1;
-      size_t ix1 = ix;
-      size_t ix2 = (ix + 1 < s) ? ix + 1 : s - 1;
-      size_t ix3 = (ix + 2 < s) ? ix + 2 : s - 1;
+      size_t buf_size = _buffer.size();
+      size_t ix0 = std::min((ix == 0 ? 0 : ix - 1), buf_size - 1);
+      size_t ix1 = std::min(ix, buf_size - 1);
+      size_t ix2 = std::min((ix + 1 < s ? ix + 1 : s - 1), buf_size - 1);
+      size_t ix3 = std::min((ix + 2 < s ? ix + 2 : s - 1), buf_size - 1);
+
       _resampled[i] = lowpass.process(cubic_interp(_buffer[ix0], _buffer[ix1], _buffer[ix2], _buffer[ix3], mu));
     }
 
@@ -268,20 +272,29 @@ float Vocoder::get_sample(int note, int n) {
     }
   }
 
-  if (n >= out_samples.size() || n >= _calculated_until) {
+  if (n >= out_samples.size()) {
     running = false;
-    current_note = 0;
     stopping = false;
+
+    current_note = 0;
     smpl_ptr = 0;
+    read_ptr = 0;
+    write_ptr = 0;
+
+    clear();
     return 0.0f;
   }
 
-  return out_samples[n] * gain;
+  return out_samples[n] / gain;
 }
 
 
 Vocoder::~Vocoder() {
+  fftwf_free(fft_in);
+  fftwf_free(fft_out);
+
   fftwf_destroy_plan(p);
   fftwf_destroy_plan(pi);
+
   free(file);
 }

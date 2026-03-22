@@ -42,6 +42,7 @@ private:
 
   fftwf_plan p;
   fftwf_plan pi;
+
   float *fft_in;
   fftwf_complex *fft_out;
 

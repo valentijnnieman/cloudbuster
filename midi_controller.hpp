@@ -25,70 +25,31 @@ public:
 
   static void callback(double deltatime, std::vector<unsigned char> *message,
                        void *userData) {
-    int key = (int)message->at(1);
-    /*std::cout << key << " - ";*/
-    int value = (int)message->at(0);
-    /*std::cout << value << std::endl;*/
+int status = message->at(0) & 0xF0;
+int key = message->at(1);
+int velocity = message->at(2);
 
-    callback_data_s *data = static_cast<callback_data_s *>(userData);
-    if (value == 144) {
-      auto s = data->voices[data->stln_voice];
-      s->current_note = key;
-      s->clear();
-      s->running = true;
-      s->stopping = false;
-      data->stln_voice++;
-      if(data->stln_voice >= data->voices.size()-1) {
-        data->stln_voice = 0;
-      }
-      /*auto it = std::find_if(data->voices.begin(), data->voices.end(),*/
-      /*                       [&](const std::shared_ptr<Vocoder> s) {*/
-      /*                         return !s->running;*/
-      /*                       });*/
-      /*if (it != data->voices.end()) { // if there is a free voice*/
-      /*  auto s = *it;*/
-      /*  if (s != nullptr) {*/
-      /*    if(s->current_note != key) {*/
-      /*      s->current_note = key;*/
-      /*      s->clear();*/
-      /*    }*/
-      /*    s->current_note = key;*/
-      /*    s->running = true;*/
-      /*    s->stopping = false;*/
-      /*  }*/
-      /*} else { // if there are no free voices*/
-      /*  auto s = data->voices[data->stln_voice];*/
-      /*  if (s != nullptr) {*/
-      /*    if(s->current_note != key) {*/
-      /*      s->current_note = key;*/
-      /*      s->clear();*/
-      /*    }*/
-      /*    s->running = true;*/
-      /*    s->stopping = false;*/
-      /**/
-      /*    data->stln_voice++;*/
-      /*    if(data->stln_voice >= data->voices.size()) {*/
-      /*      data->stln_voice = 0;*/
-      /*    }*/
-      /*  }*/
-      /*}*/
+callback_data_s *data = static_cast<callback_data_s *>(userData);
+
+if (status == 0x90 && velocity > 0) { // Note On
+    auto& s = data->voices[data->stln_voice];
+    s->current_note = key;
+    s->clear();
+    s->running = true;
+    s->stopping = false;
+    data->stln_voice = (data->stln_voice + 1) % data->voices.size();
+}
+if (status == 0x80 || (status == 0x90 && velocity == 0)) { // Note Off
+    auto it = std::find_if(data->voices.begin(), data->voices.end(),
+        [key](const std::shared_ptr<Vocoder>& s) {
+            return s->current_note == key && s->running;
+        });
+    if (it != data->voices.end()) {
+        auto& s = *it;
+        if (s) s->stopping = true;
     }
-    if (value == 128) {
-      auto it = std::find_if(data->voices.begin(), data->voices.end(),
-                             [&, key](const std::shared_ptr<Vocoder> s) {
-                               return s->current_note == key && s->running == true;
-                             });
-      if (it != data->voices.end()) {
-        auto s = *it;
-        if (s != nullptr) {
-          s->stopping = true;
-        }
-      }
-    }
-    // int value = (int)message->at(2);
-    // std::cout << "Recieving [176, " << key << ", " << value <<"]" <<
-    // std::endl; Store *store = static_cast<Store *>(userData);
-    // store->update(key, value);
+}
+
   }
 
   MidiController() {

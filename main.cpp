@@ -21,7 +21,6 @@
 // using namespace matplot;
 
 PaStream *stream;
-const float amp = 0.5f;
 
 static int callback(const void *input, void *output, unsigned long frameCount,
                     const PaStreamCallbackTimeInfo *timeInfo,
@@ -29,21 +28,29 @@ static int callback(const void *input, void *output, unsigned long frameCount,
   frameCount *= 2;
   callback_data_s *data = (callback_data_s *)userData;
   float *out = (float *)output;
-  memset(out, 0.0f, sizeof(float) * frameCount);
+  /*memset(out, 0.0f, sizeof(float) * frameCount);*/
+  std::fill_n(out, frameCount, 0.0f);
 
-  for (const auto& sampler : data->voices) {
-    if (sampler->running && !sampler->stopping) {
-      for (size_t i = 0; i < frameCount; i++) {
-        out[i] += sampler->get_sample(sampler->current_note, sampler->smpl_ptr+i);
-      }
-    }
-    if (sampler->stopping) {
+  uint8_t amplitudes = 0;
+  for (auto& sampler : data->voices) {
+    if (sampler->running) {
+      amplitudes++;
       for (size_t i = 0; i < frameCount; i++) {
         out[i] += sampler->get_sample(sampler->current_note, sampler->smpl_ptr+i);
       }
     }
 
     sampler->smpl_ptr += frameCount;
+  }
+
+  for (size_t i = 0; i < frameCount; ++i) {
+      out[i] /= amplitudes;
+      if (out[i] > 1.0f) {
+        out[i] = 1.0f;
+      }
+      else if (out[i] < -1.0f) { 
+        out[i] = -1.0f;
+      }
   }
 
   return paContinue;
@@ -74,7 +81,7 @@ int main(int argc, const char *argv[]) {
   bool gongo = false;
   bool instantaneous = false;
   int N = 1024;
-  int window_size = 1024;
+  int window_size = N;
   float fs = 8000.0;
   int min_note = 40;
   int max_note = 90;
@@ -93,8 +100,6 @@ int main(int argc, const char *argv[]) {
     if (args[i] == "-n") {
       N = stoi(args[i + 1]);
       std::cout << "[Sampler] N (fft) size: " << N << std::endl;
-    }
-    if (args[i] == "-w") {
       window_size = stoi(args[i + 1]);
       std::cout << "[Sampler] window size: " << window_size << std::endl;
     }
@@ -178,7 +183,7 @@ int main(int argc, const char *argv[]) {
   signal(SIGINT, close_stream);
 
   std::cout << "copying samplers for voices..." << std::endl;
-  for (int j = 0; j < 8; j++) {
+  for (int j = 0; j < 4; j++) {
     Vocoder *s = new Vocoder(sampler);
     s->it = j;
 
@@ -238,24 +243,6 @@ int main(int argc, const char *argv[]) {
     fprintf(stderr, "Problem opening starting Stream\n");
     return 1;
   }
-
-  /*std::cout << "calculating samples..." << std::endl;*/
-  /*for (int i = min_note; i < max_note; i++) {*/
-  /*  if (pv) {*/
-  /*    sampler.calculate_sample_pitch_shift(data, i);*/
-  /*  }*/
-  /*  if (!pv && stft) {*/
-  /*    sampler.calculate_sample_stft(data, i);*/
-  /*  }*/
-  /*  if (!pv && !stft) {*/
-  /*    sampler.calculate_sample(data, i);*/
-  /*  }*/
-
-    // copy samples to all voices
-    /*for (auto s : data.voices) {*/
-    /*  s->key_samples[i] = sampler.key_samples[i];*/
-    /*}*/
-  /*}*/
 
   std::cout << "Done! opening stream..." << std::endl;
   /* Run until EOF is reached */
