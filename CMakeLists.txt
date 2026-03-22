@@ -3,8 +3,8 @@ include(CMakePrintHelpers)
 
 project(cloudbuster)
 set(RTMIDI_TARGETNAME_UNINSTALL "rtmidi-uninstall")
-set(PFFFT_TARGETNAME_UNINSTALL "pffft-uninstall")
 set(ENABLE_PRECOMPILED_HEADERS OFF)
+set(PA_USE_SNDIO OFF CACHE BOOL "" FORCE)
 
 # find_package(PkgConfig REQUIRED)
 
@@ -15,7 +15,6 @@ option (BUILD_PROGRAMS "Build programs" OFF)
 option (BUILD_EXAMPLES "Build examples" OFF)
 option (BUILD_TESTING "Build tests" OFF)
 option (ENABLE_CPACK "Enable CPack support" OFF)
-option(PFFFT_USE_TYPE_FLOAT "Use float precision" ON)
 option(RTMIDI_BUILD_TESTING "Build test programs" OFF)
 option(ENABLE_FLOAT "Enable float precision in FFTW3" ON)
 

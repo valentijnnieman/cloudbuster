@@ -1,6 +1,8 @@
 build
+build-arm
 .vscode
 usersamples
 inventory.ini
 playbook.yaml
 fftw-3.3.10
+toolchain.cmake

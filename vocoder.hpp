@@ -1,15 +1,16 @@
 #pragma once
-#include <memory>
 #include <complex>
 #include <iostream>
-#include <span> 
+#include <memory>
+#include <span>
 #include <thread>
+#include <vector>
 
+#include "biquad.hpp"
 #include "sndfile.hh"
 #include <fftw3.h>
 #include <map>
 #include <samplerate.h>
-#include "biquad.hpp"
 
 class Vocoder {
 private:
@@ -67,10 +68,11 @@ public:
   int frames_size() { return resampled.size(); }
 
   void print_stats();
-  Vocoder(const std::string &filename, int N = 1024, int window_size = 1024, int hop_size_div = 4, float samplerate = 44100.0f);
+  Vocoder(const std::string &filename, int N = 1024, int window_size = 1024,
+          int hop_size_div = 4, float samplerate = 44100.0f);
   ~Vocoder();
 
-  std::vector<float>& get_samples(int frameCount, float amp);
+  std::vector<float> &get_samples(int frameCount, float amp);
 
   float note_to_freq(int note);
 
