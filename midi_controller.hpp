@@ -14,6 +14,13 @@ typedef struct {
   int max;
   int index;
   int stln_voice;
+
+  // multi-file navigation
+  std::vector<std::string> file_list;
+  std::atomic<int> current_file_index{0};
+  std::atomic<int> pending_file_index{0};
+  std::atomic<bool> file_change_pending{false};
+  std::atomic<bool> reloading{false};
 } callback_data_s;
 
 class MidiController {
@@ -25,6 +32,7 @@ public:
 
   static void callback(double deltatime, std::vector<unsigned char> *message,
                        void *userData) {
+if (message->size() < 3) return;
 int status = message->at(0) & 0xF0;
 int key = message->at(1);
 int velocity = message->at(2);
@@ -33,20 +41,33 @@ callback_data_s *data = static_cast<callback_data_s *>(userData);
 
 if (status == 0x90 && velocity > 0) { // Note On
     auto& s = data->voices[data->stln_voice];
-    s->current_note = key;
-    s->clear();
-    s->running = true;
-    s->stopping = false;
+    s->pending_note.store(key);
+    s->stopping.store(false);
+    s->clear_pending.store(true);  // audio thread will call clear() + set running
     data->stln_voice = (data->stln_voice + 1) % data->voices.size();
 }
 if (status == 0x80 || (status == 0x90 && velocity == 0)) { // Note Off
     auto it = std::find_if(data->voices.begin(), data->voices.end(),
         [key](const std::shared_ptr<Vocoder>& s) {
-            return s->current_note == key && s->running;
+            return s->current_note.load() == key && s->running.load();
         });
     if (it != data->voices.end()) {
-        auto& s = *it;
-        if (s) s->stopping = true;
+        (*it)->stopping.store(true);
+    }
+}
+if (status == 0xB0) { // Control Change
+    int n = (int)data->file_list.size();
+    if (n > 1) {
+        if (key == 48 && velocity > 0) { // next file
+            int next = (data->current_file_index.load() + 1) % n;
+            data->pending_file_index.store(next);
+            data->file_change_pending.store(true);
+        }
+        if (key == 47 && velocity > 0) { // prev file
+            int prev = (data->current_file_index.load() - 1 + n) % n;
+            data->pending_file_index.store(prev);
+            data->file_change_pending.store(true);
+        }
     }
 }
 

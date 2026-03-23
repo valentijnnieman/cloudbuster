@@ -1,19 +1,20 @@
 #include <algorithm>
 #include <complex>
+#include <filesystem>
 #include <iomanip>
 #include <iostream>
 #include <signal.h>
 #include <stdio.h>
 #include <string.h>
 
-#include <vector>
-#include <samplerate.h>
 #include "sndfile.hh"
+#include <samplerate.h>
+#include <vector>
 
 #include "portaudio.h"
 
-#include "vocoder.hpp"
 #include "midi_controller.hpp"
+#include "vocoder.hpp"
 #include <cmath>
 #include <numbers>
 
@@ -25,32 +26,36 @@ PaStream *stream;
 static int callback(const void *input, void *output, unsigned long frameCount,
                     const PaStreamCallbackTimeInfo *timeInfo,
                     PaStreamCallbackFlags statusFlags, void *userData) {
-  frameCount *= 2;
   callback_data_s *data = (callback_data_s *)userData;
   float *out = (float *)output;
-  /*memset(out, 0.0f, sizeof(float) * frameCount);*/
-  std::fill_n(out, frameCount, 0.0f);
+  std::fill_n(out, frameCount * 2, 0.0f);  // stereo: 2 samples per frame
+
+  if (data->reloading.load()) return paContinue;
 
   uint8_t amplitudes = 0;
-  for (auto& sampler : data->voices) {
-    if (sampler->running) {
-      amplitudes++;
-      for (size_t i = 0; i < frameCount; i++) {
-        out[i] += sampler->get_sample(sampler->current_note, sampler->smpl_ptr+i);
-      }
+  for (auto &sampler : data->voices) {
+    if (sampler->clear_pending.exchange(false)) {
+      sampler->current_note.store(sampler->pending_note.load());
+      sampler->clear();
+      sampler->running.store(true);
     }
 
-    sampler->smpl_ptr += frameCount;
+    if (sampler->running.load()) {
+      amplitudes++;
+      int note = sampler->current_note.load();
+      for (size_t i = 0; i < frameCount; i++) {
+        float s = sampler->get_sample(note, sampler->smpl_ptr + i);
+        out[i * 2]     += s;  // left
+        out[i * 2 + 1] += s;  // right
+      }
+      sampler->smpl_ptr += frameCount;
+    }
   }
 
-  for (size_t i = 0; i < frameCount; ++i) {
-      out[i] /= amplitudes;
-      if (out[i] > 1.0f) {
-        out[i] = 1.0f;
-      }
-      else if (out[i] < -1.0f) { 
-        out[i] = -1.0f;
-      }
+  if (amplitudes > 0) {
+    for (size_t i = 0; i < frameCount * 2; ++i) {
+      out[i] = std::clamp(out[i] / amplitudes, -1.0f, 1.0f);
+    }
   }
 
   return paContinue;
@@ -78,6 +83,7 @@ int main(int argc, const char *argv[]) {
   bool pv = false;
   bool stft = false;
   bool phi_unwrap = true;
+  bool precompute_flag = true;
   bool gongo = false;
   bool instantaneous = false;
   int N = 1024;
@@ -89,13 +95,12 @@ int main(int argc, const char *argv[]) {
   int midi_in = 1;
   int midi_out = 1;
   int device = 0;
-  std::string filename =
-      "/home/valentijn/dev/c++/cloudbuster/fairchild/samples/Piano_note_a1.wav";
+  std::string folder = ".";
 
   for (int i = 0; i < args.size(); i++) {
     if (args[i] == "-f") {
-      filename = args[i + 1];
-      std::cout << "[Sampler] using file: " << filename << std::endl;
+      folder = args[i + 1];
+      std::cout << "[Sampler] using folder: " << folder << std::endl;
     }
     if (args[i] == "-n") {
       N = stoi(args[i + 1]);
@@ -110,8 +115,7 @@ int main(int argc, const char *argv[]) {
     }
     if (args[i] == "-fs") {
       fs = stof(args[i + 1]);
-      std::cout << "[Sampler] sample rate: " << fs
-                << std::endl;
+      std::cout << "[Sampler] sample rate: " << fs << std::endl;
     }
     if (args[i] == "-min") {
       min_note = stoi(args[i + 1]);
@@ -144,6 +148,10 @@ int main(int argc, const char *argv[]) {
         std::cout << "[Sampler] calculate instantaneous frequency in algorithm"
                   << std::endl;
       }
+      if (args[i] == "no-precompute") {
+        precompute_flag = false;
+        std::cout << "[Sampler] precompute disabled" << std::endl;
+      }
       if (args[i] == "pitchshift") {
         pv = true;
         std::cout << "[Sampler] using phase-vocoder pitch shifting algorithm"
@@ -157,17 +165,44 @@ int main(int argc, const char *argv[]) {
     }
   }
 
-  // SndfileHandle file;
-  /*Sampler sampler = Sampler(filename, N, window_size, hop_size_div);*/
+  // Scan folder for audio files
+  std::vector<std::string> file_list;
+  {
+    namespace fs = std::filesystem;
+    for (auto &entry : fs::directory_iterator(folder)) {
+      if (!entry.is_regular_file()) continue;
+      std::string ext = entry.path().extension().string();
+      std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+      if (ext == ".wav" || ext == ".aif" || ext == ".aiff" || ext == ".flac" || ext == ".ogg") {
+        file_list.push_back(entry.path().string());
+      }
+    }
+    std::sort(file_list.begin(), file_list.end());
+  }
+  if (file_list.empty()) {
+    std::cerr << "[Sampler] no audio files found in: " << folder << std::endl;
+    return 1;
+  }
+  std::cout << "[Sampler] found " << file_list.size() << " file(s):" << std::endl;
+  for (auto &f : file_list) std::cout << "  " << f << std::endl;
+
+  std::string filename = file_list[0];
+  std::cout << "[Sampler] loading: " << filename << std::endl;
+
   Vocoder sampler = Vocoder(filename, N, window_size, hop_size_div, fs);
   sampler.PHI_UNWRAP = phi_unwrap;
   sampler.GONGO = gongo;
   sampler.INSTANTANEOUS = instantaneous;
 
+  if (precompute_flag)
+    sampler.precompute(min_note, max_note);
+
   PaError error;
   callback_data_s data;
 
   data.stln_voice = 0;
+  data.file_list = file_list;
+  data.current_file_index.store(0);
 
   MidiController ctrl;
 
@@ -236,7 +271,7 @@ int main(int argc, const char *argv[]) {
     fprintf(stderr, "Problem opening Default Stream\n");
     return 1;
   }
-  
+
   /* Start the stream */
   error = Pa_StartStream(stream);
   if (error != paNoError) {
@@ -247,7 +282,32 @@ int main(int argc, const char *argv[]) {
   std::cout << "Done! opening stream..." << std::endl;
   /* Run until EOF is reached */
   while (Pa_IsStreamActive(stream)) {
-    // Pa_Sleep(1000);
+    if (data.file_change_pending.exchange(false)) {
+      int idx = data.pending_file_index.load();
+      std::cout << "[Sampler] switching to (" << idx + 1 << "/"
+                << data.file_list.size() << "): " << data.file_list[idx]
+                << std::endl;
+
+      data.reloading.store(true);
+      Pa_Sleep(50); // let any in-flight callback finish
+
+      Vocoder new_sampler(data.file_list[idx], N, window_size, hop_size_div, fs);
+      new_sampler.PHI_UNWRAP = phi_unwrap;
+      new_sampler.GONGO = gongo;
+      new_sampler.INSTANTANEOUS = instantaneous;
+      if (precompute_flag) new_sampler.precompute(min_note, max_note);
+
+      data.voices.clear();
+      for (int j = 0; j < 4; j++) {
+        Vocoder *s = new Vocoder(new_sampler);
+        s->it = j;
+        data.voices.push_back(std::shared_ptr<Vocoder>(s));
+      }
+      data.stln_voice = 0;
+      data.current_file_index.store(idx);
+      data.reloading.store(false);
+    }
+    Pa_Sleep(100);
   }
 
   close_stream(0);
