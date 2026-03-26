@@ -1,11 +1,12 @@
 #include <algorithm>
+#include <chrono>
 #include <complex>
 #include <filesystem>
 #include <iomanip>
 #include <iostream>
 #include <signal.h>
-#include <stdio.h>
 #include <string.h>
+#include <thread>
 
 #include "sndfile.hh"
 #include <samplerate.h>
@@ -22,15 +23,19 @@
 // using namespace matplot;
 
 PaStream *stream;
+static volatile sig_atomic_t keep_running = 1;
+
+static void handle_signal(int) { keep_running = 0; }
 
 static int callback(const void *input, void *output, unsigned long frameCount,
                     const PaStreamCallbackTimeInfo *timeInfo,
                     PaStreamCallbackFlags statusFlags, void *userData) {
   callback_data_s *data = (callback_data_s *)userData;
   float *out = (float *)output;
-  std::fill_n(out, frameCount * 2, 0.0f);  // stereo: 2 samples per frame
+  std::fill_n(out, frameCount * 2, 0.0f); // stereo: 2 samples per frame
 
-  if (data->reloading.load()) return paContinue;
+  if (data->reloading.load())
+    return paContinue;
 
   uint8_t amplitudes = 0;
   for (auto &sampler : data->voices) {
@@ -45,8 +50,8 @@ static int callback(const void *input, void *output, unsigned long frameCount,
       int note = sampler->current_note.load();
       for (size_t i = 0; i < frameCount; i++) {
         float s = sampler->get_sample(note, sampler->smpl_ptr + i);
-        out[i * 2]     += s;  // left
-        out[i * 2 + 1] += s;  // right
+        out[i * 2] += s;     // left
+        out[i * 2 + 1] += s; // right
       }
       sampler->smpl_ptr += frameCount;
     }
@@ -61,20 +66,21 @@ static int callback(const void *input, void *output, unsigned long frameCount,
   return paContinue;
 }
 
-void close_stream(int s) {
-  printf("Closing...\n");
+static void close_stream() {
+  std::cout << "closing..." << std::endl;
   PaError error;
-  /*  Shut down portaudio */
+
+  error = Pa_StopStream(stream);
+  if (error != paNoError)
+    std::cerr << "stop: " << Pa_GetErrorText(error) << std::endl;
+
   error = Pa_CloseStream(stream);
-  if (error != paNoError) {
-    fprintf(stderr, "Problem closing stream\n");
-  }
+  if (error != paNoError)
+    std::cerr << "close: " << Pa_GetErrorText(error) << std::endl;
 
   error = Pa_Terminate();
-  if (error != paNoError) {
-    fprintf(stderr, "Problem terminating\n");
-  }
-  exit(1);
+  if (error != paNoError)
+    std::cerr << "term: " << Pa_GetErrorText(error) << std::endl;
 }
 
 int main(int argc, const char *argv[]) {
@@ -82,10 +88,9 @@ int main(int argc, const char *argv[]) {
 
   bool pv = false;
   bool stft = false;
-  bool phi_unwrap = true;
   bool precompute_flag = true;
-  bool gongo = false;
-  bool instantaneous = false;
+  bool roboto = false;
+  bool whisper = false;
   int N = 1024;
   int window_size = N;
   float fs = 8000.0;
@@ -100,67 +105,50 @@ int main(int argc, const char *argv[]) {
   for (int i = 0; i < args.size(); i++) {
     if (args[i] == "-f") {
       folder = args[i + 1];
-      std::cout << "[Sampler] using folder: " << folder << std::endl;
+      std::cout << "dir: " << folder << std::endl;
     }
     if (args[i] == "-n") {
       N = stoi(args[i + 1]);
-      std::cout << "[Sampler] N (fft) size: " << N << std::endl;
+      std::cout << "N=" << N << std::endl;
       window_size = stoi(args[i + 1]);
-      std::cout << "[Sampler] window size: " << window_size << std::endl;
+      std::cout << "win=" << window_size << std::endl;
     }
     if (args[i] == "-h") {
       hop_size_div = stoi(args[i + 1]);
-      std::cout << "[Sampler] hop size divide by: " << hop_size_div
-                << std::endl;
+      std::cout << "hop/=" << hop_size_div << std::endl;
     }
     if (args[i] == "-fs") {
       fs = stof(args[i + 1]);
-      std::cout << "[Sampler] sample rate: " << fs << std::endl;
+      std::cout << "fs=" << fs << std::endl;
     }
     if (args[i] == "-min") {
       min_note = stoi(args[i + 1]);
-      std::cout << "[Sampler] minimum (midi) note: " << min_note << std::endl;
+      std::cout << "min=" << min_note << std::endl;
     }
     if (args[i] == "-max") {
       max_note = stoi(args[i + 1]);
-      std::cout << "[Sampler] maximum (midi) note: " << max_note << std::endl;
+      std::cout << "max=" << max_note << std::endl;
     }
     if (args[i] == "-midi") {
       midi_in = stoi(args[i + 1]);
       midi_out = midi_in;
-      std::cout << "[Sampler] midi i/o ports: " << midi_in << std::endl;
+      std::cout << "midi=" << midi_in << std::endl;
     }
     if (args[i] == "-device") {
       device = stoi(args[i + 1]);
-      std::cout << "[Sampler] device: " << device << std::endl;
+      std::cout << "device=" << device << std::endl;
     } else {
-      if (args[i] == "no-unwrap") {
-        phi_unwrap = false;
-        std::cout << "[Sampler] not unwrapping phi values in algorithm"
-                  << std::endl;
+      if (args[i] == "roboto") {
+        roboto = true;
+        std::cout << "roboto" << std::endl;
       }
-      if (args[i] == "gongo") {
-        gongo = true;
-        std::cout << "[Sampler] using GONGO preset" << std::endl;
-      }
-      if (args[i] == "instantaneous") {
-        instantaneous = true;
-        std::cout << "[Sampler] calculate instantaneous frequency in algorithm"
-                  << std::endl;
+      if (args[i] == "whisper") {
+        whisper = true;
+        std::cout << "whisper" << std::endl;
       }
       if (args[i] == "no-precompute") {
         precompute_flag = false;
-        std::cout << "[Sampler] precompute disabled" << std::endl;
-      }
-      if (args[i] == "pitchshift") {
-        pv = true;
-        std::cout << "[Sampler] using phase-vocoder pitch shifting algorithm"
-                  << std::endl;
-      }
-      if (args[i] == "phase-vocoder") {
-        pv = false;
-        stft = true;
-        std::cout << "[Sampler] using phase vocoder algorithm" << std::endl;
+        std::cout << "no precompute" << std::endl;
       }
     }
   }
@@ -170,32 +158,32 @@ int main(int argc, const char *argv[]) {
   {
     namespace fs = std::filesystem;
     for (auto &entry : fs::directory_iterator(folder)) {
-      if (!entry.is_regular_file()) continue;
+      if (!entry.is_regular_file())
+        continue;
       std::string ext = entry.path().extension().string();
       std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
-      if (ext == ".wav" || ext == ".aif" || ext == ".aiff" || ext == ".flac" || ext == ".ogg") {
+      if (ext == ".wav" || ext == ".aif" || ext == ".aiff" || ext == ".flac" ||
+          ext == ".ogg") {
         file_list.push_back(entry.path().string());
       }
     }
     std::sort(file_list.begin(), file_list.end());
   }
   if (file_list.empty()) {
-    std::cerr << "[Sampler] no audio files found in: " << folder << std::endl;
+    std::cerr << "no files in: " << folder << std::endl;
     return 1;
   }
-  std::cout << "[Sampler] found " << file_list.size() << " file(s):" << std::endl;
-  for (auto &f : file_list) std::cout << "  " << f << std::endl;
+  std::cout << "found " << file_list.size() << " files" << std::endl;
+  for (auto &f : file_list)
+    std::cout << std::filesystem::path(f).filename().string() << std::endl;
 
   std::string filename = file_list[0];
-  std::cout << "[Sampler] loading: " << filename << std::endl;
+  std::cout << "loading: "
+            << std::filesystem::path(filename).filename().string() << std::endl;
 
   Vocoder sampler = Vocoder(filename, N, window_size, hop_size_div, fs);
-  sampler.PHI_UNWRAP = phi_unwrap;
-  sampler.GONGO = gongo;
-  sampler.INSTANTANEOUS = instantaneous;
-
-  if (precompute_flag)
-    sampler.precompute(min_note, max_note);
+  sampler.ROBOTO = roboto;
+  sampler.WHISPER = whisper;
 
   PaError error;
   callback_data_s data;
@@ -215,9 +203,10 @@ int main(int argc, const char *argv[]) {
 
   ctrl.midiOut->openPort(midi_out);
 
-  signal(SIGINT, close_stream);
+  signal(SIGINT, handle_signal);
+  signal(SIGTERM, handle_signal);
 
-  std::cout << "copying samplers for voices..." << std::endl;
+  std::cout << "init voices..." << std::endl;
   for (int j = 0; j < 4; j++) {
     Vocoder *s = new Vocoder(sampler);
     s->it = j;
@@ -228,34 +217,34 @@ int main(int argc, const char *argv[]) {
   /* init portaudio */
   error = Pa_Initialize();
   if (error != paNoError) {
-    fprintf(stderr, "Problem initializing\n");
+    std::cerr << "PA init failed" << std::endl;
     return 1;
   }
   PaStreamParameters outputParameters;
 
   int numDevices = Pa_GetDeviceCount();
-  if (numDevices < 0) {
-    printf("ERROR: Pa_GetDeviceCount returned 0x%x\n", numDevices);
-  }
-  const PaDeviceInfo *deviceInfo = Pa_GetDeviceInfo(device);
-  printf("Name                        = %s\n", deviceInfo->name);
-  printf("Host API                    = %s\n",
-         Pa_GetHostApiInfo(deviceInfo->hostApi)->name);
-  printf("Max inputs = %d", deviceInfo->maxInputChannels);
-  printf(", Max outputs = %d\n", deviceInfo->maxOutputChannels);
+  std::cout << "PA devs: " << numDevices << std::endl;
 
-  printf("Default low input latency   = %8.4f\n",
-         deviceInfo->defaultLowInputLatency);
-  printf("Default low output latency  = %8.4f\n",
-         deviceInfo->defaultLowOutputLatency);
-  printf("Default high input latency  = %8.4f\n",
-         deviceInfo->defaultHighInputLatency);
-  printf("Default high output latency = %8.4f\n",
-         deviceInfo->defaultHighOutputLatency);
+  const PaDeviceInfo *deviceInfo = Pa_GetDeviceInfo(device);
+  if (deviceInfo == nullptr) {
+    std::cerr << "dev " << device << " not found" << std::endl;
+    Pa_Terminate();
+    return 1;
+  }
+  std::cout << "dev: " << deviceInfo->name << std::endl;
+  const PaHostApiInfo *hostApi = Pa_GetHostApiInfo(deviceInfo->hostApi);
+  std::cout << "API: " << (hostApi ? hostApi->name : "unknown") << std::endl;
+  std::cout << "in:" << deviceInfo->maxInputChannels
+            << " out:" << deviceInfo->maxOutputChannels << std::endl;
+  std::cout << std::fixed << std::setprecision(4);
+  std::cout << "llo in: " << deviceInfo->defaultLowInputLatency << std::endl;
+  std::cout << "llo out:" << deviceInfo->defaultLowOutputLatency << std::endl;
+  std::cout << "lhi in: " << deviceInfo->defaultHighInputLatency << std::endl;
+  std::cout << "lhi out:" << deviceInfo->defaultHighOutputLatency << std::endl;
 
   outputParameters.device = device;
   if (outputParameters.device == paNoDevice) {
-    fprintf(stderr, "Error: No default output device.\n");
+    std::cerr << "no output device" << std::endl;
   }
   outputParameters.channelCount = 2;
   outputParameters.sampleFormat = paFloat32;
@@ -268,35 +257,62 @@ int main(int argc, const char *argv[]) {
                     fs, 256, paNoFlag, callback, &data);
 
   if (error != paNoError) {
-    fprintf(stderr, "Problem opening Default Stream\n");
+    std::cerr << "stream open failed" << std::endl;
     return 1;
   }
 
   /* Start the stream */
   error = Pa_StartStream(stream);
   if (error != paNoError) {
-    fprintf(stderr, "Problem opening starting Stream\n");
+    std::cerr << "stream start failed" << std::endl;
     return 1;
   }
 
-  std::cout << "Done! opening stream..." << std::endl;
-  /* Run until EOF is reached */
-  while (Pa_IsStreamActive(stream)) {
+  std::unique_ptr<Vocoder> precompute_tmpl;
+  std::thread precompute_thread;
+
+  auto launch_precompute = [&](const std::string &filename) {
+    precompute_tmpl =
+        std::make_unique<Vocoder>(filename, N, window_size, hop_size_div, fs);
+    precompute_tmpl->ROBOTO = roboto;
+    precompute_tmpl->WHISPER = whisper;
+    precompute_thread = std::thread(
+        [&, fname = std::filesystem::path(filename).filename().string()]() {
+          precompute_tmpl->precompute(min_note, max_note);
+          if (!precompute_tmpl->_cancel_precompute.load()) {
+            data.reloading.store(true);
+            Pa_Sleep(50);
+            for (auto &v : data.voices)
+              v->apply_precomputed_from(*precompute_tmpl);
+            data.reloading.store(false);
+            std::cout << fname << std::endl;
+          }
+        });
+  };
+
+  if (precompute_flag)
+    launch_precompute(file_list[0]);
+
+  // std::cout << "Done! opening stream..." << std::endl;
+  /* Run until stream ends or signal received */
+  while (keep_running && Pa_IsStreamActive(stream)) {
     if (data.file_change_pending.exchange(false)) {
       int idx = data.pending_file_index.load();
-      std::cout << "[Sampler] switching to (" << idx + 1 << "/"
-                << data.file_list.size() << "): " << data.file_list[idx]
-                << std::endl;
+      // Cancel any ongoing precompute and wait for it to finish
+      if (precompute_tmpl)
+        precompute_tmpl->_cancel_precompute.store(true);
+      if (precompute_thread.joinable())
+        precompute_thread.join();
 
+      // Swap voices immediately with real-time vocoder (no precomputed data
+      // yet)
       data.reloading.store(true);
-      Pa_Sleep(50); // let any in-flight callback finish
+      Pa_Sleep(50);
 
-      Vocoder new_sampler(data.file_list[idx], N, window_size, hop_size_div, fs);
-      new_sampler.PHI_UNWRAP = phi_unwrap;
-      new_sampler.GONGO = gongo;
-      new_sampler.INSTANTANEOUS = instantaneous;
-      if (precompute_flag) new_sampler.precompute(min_note, max_note);
-
+      Vocoder new_sampler(data.file_list[idx], N, window_size, hop_size_div,
+                          fs);
+      new_sampler.ROBOTO = roboto;
+      new_sampler.WHISPER = whisper;
       data.voices.clear();
       for (int j = 0; j < 4; j++) {
         Vocoder *s = new Vocoder(new_sampler);
@@ -306,11 +322,41 @@ int main(int argc, const char *argv[]) {
       data.stln_voice = 0;
       data.current_file_index.store(idx);
       data.reloading.store(false);
+
+      // Start background precompute for the new file
+      if (precompute_flag)
+        launch_precompute(data.file_list[idx]);
+
+      std::cout
+          << idx + 1 << "/" << data.file_list.size() << ":"
+          << std::filesystem::path(data.file_list[idx]).filename().string()
+          << std::endl;
+    }
+    // Redisplay filename 2s after a transient CC message
+    int64_t last = data.last_transient_ms.load();
+    if (last > 0) {
+      auto now_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                        std::chrono::steady_clock::now().time_since_epoch())
+                        .count();
+      if (now_ms - last >= 2000) {
+        data.last_transient_ms.store(0);
+        int idx = data.current_file_index.load();
+        std::cout
+            << idx + 1 << "/" << data.file_list.size() << ":"
+            << std::filesystem::path(data.file_list[idx]).filename().string()
+            << std::endl;
+      }
     }
     Pa_Sleep(100);
   }
 
-  close_stream(0);
+  // Cancel and join precompute thread before shutdown
+  if (precompute_tmpl)
+    precompute_tmpl->_cancel_precompute.store(true);
+  if (precompute_thread.joinable())
+    precompute_thread.join();
+
+  close_stream();
 
   return 0;
 }

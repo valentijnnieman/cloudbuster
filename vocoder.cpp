@@ -14,22 +14,25 @@ Vocoder::Vocoder(const Vocoder &other)
       calculated(other.calculated), _calculated_until(other._calculated_until),
       sig_len(other.sig_len), analysis_hopsize(other.analysis_hopsize),
       synthesis_hopsize(other.synthesis_hopsize), fs(other.fs),
-      PHI_UNWRAP(other.PHI_UNWRAP), GONGO(other.GONGO),
-      INSTANTANEOUS(other.INSTANTANEOUS),
+      ROBOTO(other.ROBOTO), WHISPER(other.WHISPER),
       current_note(other.current_note.load()),
       pending_note(other.pending_note.load()),
       clear_pending(other.clear_pending.load()), running(other.running.load()),
-      stopping(other.stopping.load()), read_ptr(other.read_ptr),
-      write_ptr(other.write_ptr), _use_precomputed(other._use_precomputed),
-      _precomputed(other._precomputed), _fft_cache(other._fft_cache) {
-  fft_in = (float *)fftwf_alloc_real(sig_len);
-  fft_out = (fftwf_complex *)fftwf_alloc_complex(sig_len);
+      stopping(other.stopping.load()), volume(other.volume.load()),
+      _cancel_precompute(false), read_ptr(other.read_ptr),
+      write_ptr(other.write_ptr),
+      _use_precomputed(other._use_precomputed.load()),
+      _precomputed(other._precomputed), _fft_cache(other._fft_cache),
+      adsr_attack(other.adsr_attack), adsr_decay(other.adsr_decay),
+      adsr_sustain(other.adsr_sustain), adsr_release(other.adsr_release) {
+  _fft_in_alloc = fft_in = (float *)fftwf_alloc_real(sig_len);
+  _fft_out_alloc = fft_out = (fftwf_complex *)fftwf_alloc_complex(sig_len);
   p = fftwf_plan_dft_r2c_1d(N, fft_in, fft_out, FFTW_ESTIMATE);
   pi = fftwf_plan_dft_c2r_1d(N, fft_out, fft_in, FFTW_ESTIMATE);
 }
 
 void Vocoder::print_stats() {
-  std::cout << "samples size: " << samples.size();
+  std::cout << "samples: " << samples.size();
   std::cout << std::endl;
   // std::cout << "window[0]: " << window[0] << std::endl;
 }
@@ -81,8 +84,8 @@ Vocoder::Vocoder(const std::string &filename, int N, int window_size,
 
   sig_len = resampled.size();
 
-  fft_in = (float *)fftwf_alloc_real(sig_len);
-  fft_out = (fftwf_complex *)fftwf_alloc_complex(sig_len);
+  _fft_in_alloc = fft_in = (float *)fftwf_alloc_real(sig_len);
+  _fft_out_alloc = fft_out = (fftwf_complex *)fftwf_alloc_complex(sig_len);
 
   p = fftwf_plan_dft_r2c_1d(N, fft_in, fft_out, FFTW_ESTIMATE);
   pi = fftwf_plan_dft_c2r_1d(N, fft_out, fft_in, FFTW_ESTIMATE);
@@ -93,6 +96,10 @@ Vocoder::Vocoder(const std::string &filename, int N, int window_size,
 }
 
 void Vocoder::clear() {
+  _adsr_phase = AdsrPhase::Attack;
+  _adsr_pos = 0;
+  _adsr_level = 0.0f;
+
   if (_use_precomputed && _precomputed.count(current_note.load())) {
     smpl_ptr = 0;
     return;
@@ -242,6 +249,55 @@ float Vocoder::cubic_interp(float y0, float y1, float y2, float y3, float mu) {
 
 // get the nth sample
 float Vocoder::get_sample(int note, int n) {
+  // Transition to Release on note-off
+  if (stopping.load() && _adsr_phase != AdsrPhase::Release &&
+      _adsr_phase != AdsrPhase::Done) {
+    _adsr_phase = AdsrPhase::Release;
+    _adsr_pos = 0;
+  }
+
+  // Compute ADSR envelope for this sample
+  int atk = std::max(1, static_cast<int>(adsr_attack * fs));
+  int dec = std::max(1, static_cast<int>(adsr_decay * fs));
+  int rel = std::max(1, static_cast<int>(adsr_release * fs));
+  float env;
+
+  switch (_adsr_phase) {
+  case AdsrPhase::Attack:
+    env = static_cast<float>(_adsr_pos) / atk;
+    if (++_adsr_pos >= atk) {
+      _adsr_phase = AdsrPhase::Decay;
+      _adsr_pos = 0;
+    }
+    break;
+  case AdsrPhase::Decay:
+    env = 1.0f - (1.0f - adsr_sustain) * static_cast<float>(_adsr_pos) / dec;
+    if (++_adsr_pos >= dec) {
+      _adsr_phase = AdsrPhase::Sustain;
+      _adsr_pos = 0;
+    }
+    break;
+  case AdsrPhase::Sustain:
+    env = adsr_sustain;
+    break;
+  case AdsrPhase::Release:
+    env = _adsr_level * (1.0f - static_cast<float>(_adsr_pos) / rel);
+    if (++_adsr_pos >= rel) {
+      running.store(false);
+      stopping.store(false);
+      current_note.store(0);
+      smpl_ptr = 0;
+      _adsr_phase = AdsrPhase::Done;
+      return 0.0f;
+    }
+    break;
+  default: // Done
+    running.store(false);
+    return 0.0f;
+  }
+  if (_adsr_phase != AdsrPhase::Release)
+    _adsr_level = env;
+
   if (_use_precomputed) {
     auto it = _precomputed.find(note);
     if (it != _precomputed.end()) {
@@ -252,7 +308,7 @@ float Vocoder::get_sample(int note, int n) {
         smpl_ptr = 0;
         return 0.0f;
       }
-      return it->second[n];
+      return it->second[n] * volume.load() * env;
     }
   }
 
@@ -362,7 +418,7 @@ float Vocoder::get_sample(int note, int n) {
     return 0.0f;
   }
 
-  return out_samples[n] / gain;
+  return (out_samples[n] / gain) * volume.load() * env;
 }
 
 // ---------------------------------------------------------------------------
@@ -434,7 +490,15 @@ std::vector<float> Vocoder::_synth_note(int note, fftwf_plan inv, float *fi,
       float expected = 2.0f * M_PI * i * hop / N;
       float delta = phase - prev_phase[i] - expected;
       delta -= 2.0f * M_PI * std::round(delta / (2.0f * M_PI));
-      phi[i] += expected + delta;
+      if (ROBOTO) {
+        phi[i] += expected;
+      }
+      if (WHISPER) {
+        phi[i] = 2.0f * M_PI * std::rand();
+      } else {
+        phi[i] += expected + delta;
+      }
+
       phi[i] -= 2.0f * M_PI * std::round(phi[i] / (2.0f * M_PI));
       prev_phase[i] = phase;
       fft_buf[i] = std::polar(amp, phi[i]);
@@ -481,15 +545,18 @@ std::vector<float> Vocoder::_synth_note(int note, fftwf_plan inv, float *fi,
   return out;
 }
 
+void Vocoder::apply_precomputed_from(const Vocoder &source) {
+  _precomputed = source._precomputed;
+  _use_precomputed.store(true);
+}
+
 void Vocoder::precompute(int min_note, int max_note) {
-  _use_precomputed = true;
+  _cancel_precompute.store(false);
   int n_notes = max_note - min_note + 1;
   int n_threads = std::min(
       std::max(1, static_cast<int>(std::thread::hardware_concurrency())),
       n_notes);
 
-  std::cout << "[Vocoder] building FFT cache (" << n_notes << " notes, "
-            << n_threads << " thread(s))..." << std::endl;
   _build_fft_cache();
 
   // Create per-thread FFTW resources BEFORE spawning threads —
@@ -518,9 +585,10 @@ void Vocoder::precompute(int min_note, int max_note) {
 
     threads.emplace_back([this, &ctx, &results, &log_mtx, t, t_min, t_max]() {
       for (int note = t_min; note <= t_max; note++) {
+        if (_cancel_precompute.load())
+          return;
         results[t][note] = _synth_note(note, ctx[t].inv, ctx[t].fi, ctx[t].fo);
         std::lock_guard<std::mutex> lock(log_mtx);
-        std::cout << "[Vocoder] note " << note << " done" << std::endl;
       }
     });
   }
@@ -534,20 +602,25 @@ void Vocoder::precompute(int min_note, int max_note) {
     fftwf_free(ctx[t].fo);
   }
 
+  _fft_cache.clear();
+
+  if (_cancel_precompute.load()) {
+    std::cout << "cancelled" << std::endl;
+    return;
+  }
+
   for (auto &r : results)
     for (auto &[note, buf] : r)
       _precomputed[note] = std::move(buf);
 
-  _fft_cache.clear(); // free ~1.4 MB of cache after precompute
-  std::cout << "[Vocoder] precompute done." << std::endl;
+  _use_precomputed.store(true);
+  std::cout << "precompute done" << std::endl;
 }
 
 Vocoder::~Vocoder() {
-  fftwf_free(fft_in);
-  fftwf_free(fft_out);
-
   fftwf_destroy_plan(p);
   fftwf_destroy_plan(pi);
 
-  free(file);
+  fftwf_free(_fft_in_alloc);
+  fftwf_free(_fft_out_alloc);
 }

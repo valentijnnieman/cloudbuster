@@ -2,6 +2,8 @@
 #include "RtMidi.h"
 /*#include "sampler.cpp"*/
 #include "vocoder.hpp"
+#include <chrono>
+#include <iomanip>
 #include <thread>
 
 typedef struct {
@@ -21,6 +23,7 @@ typedef struct {
   std::atomic<int> pending_file_index{0};
   std::atomic<bool> file_change_pending{false};
   std::atomic<bool> reloading{false};
+  std::atomic<int64_t> last_transient_ms{0};
 } callback_data_s;
 
 class MidiController {
@@ -39,6 +42,12 @@ int velocity = message->at(2);
 
 callback_data_s *data = static_cast<callback_data_s *>(userData);
 
+auto mark_transient = [&data]() {
+    data->last_transient_ms.store(
+        std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now().time_since_epoch()).count());
+};
+
 if (status == 0x90 && velocity > 0) { // Note On
     auto& s = data->voices[data->stln_voice];
     s->pending_note.store(key);
@@ -56,9 +65,41 @@ if (status == 0x80 || (status == 0x90 && velocity == 0)) { // Note Off
     }
 }
 if (status == 0xB0) { // Control Change
+    if (key == 7) { // CC7: Channel Volume
+        float vol = velocity / 127.0f;
+        for (auto &v : data->voices)
+            v->volume.store(vol);
+        std::cout << "vol: " << std::fixed << std::setprecision(2) << vol << std::endl;
+        mark_transient();
+    }
     int n = (int)data->file_list.size();
     if (n > 1) {
-        if (key == 48 && velocity > 0) { // next file
+        // ADSR: CC73=Attack, CC75=Decay, CC79=Sustain level, CC72=Release
+    if (key == 73) { // Attack time: 0–2 s
+      float val = std::max(0.001f, (velocity / 127.0f) * 2.0f);
+      for (auto &v : data->voices) v->adsr_attack = val;
+      std::cout << "atk: " << std::fixed << std::setprecision(2) << val << "s" << std::endl;
+      mark_transient();
+    }
+    if (key == 75) { // Decay time: 0–2 s
+      float val = std::max(0.001f, (velocity / 127.0f) * 2.0f);
+      for (auto &v : data->voices) v->adsr_decay = val;
+      std::cout << "dec: " << std::fixed << std::setprecision(2) << val << "s" << std::endl;
+      mark_transient();
+    }
+    if (key == 79) { // Sustain level: 0–1
+      float val = velocity / 127.0f;
+      for (auto &v : data->voices) v->adsr_sustain = val;
+      std::cout << "sus: " << std::fixed << std::setprecision(2) << val << std::endl;
+      mark_transient();
+    }
+    if (key == 72) { // Release time: 0–3 s
+      float val = std::max(0.001f, (velocity / 127.0f) * 3.0f);
+      for (auto &v : data->voices) v->adsr_release = val;
+      std::cout << "rel: " << std::fixed << std::setprecision(2) << val << "s" << std::endl;
+      mark_transient();
+    }
+    if (key == 48 && velocity > 0) { // next file
             int next = (data->current_file_index.load() + 1) % n;
             data->pending_file_index.store(next);
             data->file_change_pending.store(true);
@@ -77,12 +118,12 @@ if (status == 0xB0) { // Control Change
     try {
       midiIn = new RtMidiIn();
     } catch (RtMidiError &error) {
-      std::cout << "Couldn't initialize RtMidiIn: " << std::endl;
+      std::cout << "MIDI in failed" << std::endl;
       error.printMessage();
     }
 
     unsigned int nPorts = midiIn->getPortCount();
-    std::cout << "\nThere are " << nPorts << " MIDI input sources available.\n";
+    std::cout << "MIDI in: " << nPorts << std::endl;
 
     std::string portName;
 
@@ -92,7 +133,7 @@ if (status == 0xB0) { // Control Change
       } catch (RtMidiError &error) {
         error.printMessage();
       }
-      std::cout << "  Input Port #" << i + 1 << ": " << portName << '\n';
+      std::cout << "in" << i + 1 << ": " << portName << std::endl;
     }
 
     try {
@@ -102,7 +143,7 @@ if (status == 0xB0) { // Control Change
     }
 
     nPorts = midiOut->getPortCount();
-    std::cout << "\nThere are " << nPorts << " MIDI output ports available.\n";
+    std::cout << "MIDI out: " << nPorts << std::endl;
     for (unsigned int i = 0; i < nPorts; i++) {
       try {
         portName = midiOut->getPortName(i);
@@ -110,9 +151,8 @@ if (status == 0xB0) { // Control Change
       } catch (RtMidiError &error) {
         error.printMessage();
       }
-      std::cout << "  Output Port #" << i + 1 << ": " << portName << '\n';
+      std::cout << "out" << i + 1 << ": " << portName << std::endl;
     }
-    std::cout << '\n';
   }
 
   ~MidiController() {
