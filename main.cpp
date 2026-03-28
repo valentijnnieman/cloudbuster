@@ -91,12 +91,14 @@ int main(int argc, const char *argv[]) {
   bool precompute_flag = true;
   bool roboto = false;
   bool whisper = false;
+  bool alien = false;
   int N = 1024;
   int window_size = N;
   float fs = 8000.0;
   int min_note = 40;
   int max_note = 90;
   int hop_size_div = 8;
+  float stretch = 2.0f;
   int midi_in = 1;
   int midi_out = 1;
   int device = 0;
@@ -120,6 +122,10 @@ int main(int argc, const char *argv[]) {
     if (args[i] == "-fs") {
       fs = stof(args[i + 1]);
       std::cout << "fs=" << fs << std::endl;
+    }
+    if (args[i] == "-s") {
+      stretch = stof(args[i + 1]);
+      std::cout << "stretch=" << stretch << std::endl;
     }
     if (args[i] == "-min") {
       min_note = stoi(args[i + 1]);
@@ -145,6 +151,10 @@ int main(int argc, const char *argv[]) {
       if (args[i] == "whisper") {
         whisper = true;
         std::cout << "whisper" << std::endl;
+      }
+      if (args[i] == "alien") {
+        alien = true;
+        std::cout << "alien" << std::endl;
       }
       if (args[i] == "no-precompute") {
         precompute_flag = false;
@@ -184,6 +194,8 @@ int main(int argc, const char *argv[]) {
   Vocoder sampler = Vocoder(filename, N, window_size, hop_size_div, fs);
   sampler.ROBOTO = roboto;
   sampler.WHISPER = whisper;
+  sampler.ALIEN = alien;
+  sampler.stretch = stretch;
 
   PaError error;
   callback_data_s data;
@@ -191,6 +203,10 @@ int main(int argc, const char *argv[]) {
   data.stln_voice = 0;
   data.file_list = file_list;
   data.current_file_index.store(0);
+
+  data.roboto.store(roboto);
+  data.whisper.store(whisper);
+  data.alien.store(alien);
 
   MidiController ctrl;
 
@@ -274,8 +290,10 @@ int main(int argc, const char *argv[]) {
   auto launch_precompute = [&](const std::string &filename) {
     precompute_tmpl =
         std::make_unique<Vocoder>(filename, N, window_size, hop_size_div, fs);
-    precompute_tmpl->ROBOTO = roboto;
-    precompute_tmpl->WHISPER = whisper;
+    precompute_tmpl->ROBOTO = data.roboto.load();
+    precompute_tmpl->WHISPER = data.whisper.load();
+    precompute_tmpl->ALIEN = data.alien.load();
+    precompute_tmpl->stretch = stretch;
     precompute_thread = std::thread(
         [&, fname = std::filesystem::path(filename).filename().string()]() {
           precompute_tmpl->precompute(min_note, max_note);
@@ -285,7 +303,6 @@ int main(int argc, const char *argv[]) {
             for (auto &v : data.voices)
               v->apply_precomputed_from(*precompute_tmpl);
             data.reloading.store(false);
-            std::cout << fname << std::endl;
           }
         });
   };
@@ -311,8 +328,10 @@ int main(int argc, const char *argv[]) {
 
       Vocoder new_sampler(data.file_list[idx], N, window_size, hop_size_div,
                           fs);
-      new_sampler.ROBOTO = roboto;
-      new_sampler.WHISPER = whisper;
+      new_sampler.ROBOTO = data.roboto;
+      new_sampler.WHISPER = data.whisper;
+      new_sampler.ALIEN = data.alien;
+      new_sampler.stretch = stretch;
       data.voices.clear();
       for (int j = 0; j < 4; j++) {
         Vocoder *s = new Vocoder(new_sampler);
@@ -326,27 +345,8 @@ int main(int argc, const char *argv[]) {
       // Start background precompute for the new file
       if (precompute_flag)
         launch_precompute(data.file_list[idx]);
+    }
 
-      std::cout
-          << idx + 1 << "/" << data.file_list.size() << ":"
-          << std::filesystem::path(data.file_list[idx]).filename().string()
-          << std::endl;
-    }
-    // Redisplay filename 2s after a transient CC message
-    int64_t last = data.last_transient_ms.load();
-    if (last > 0) {
-      auto now_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-                        std::chrono::steady_clock::now().time_since_epoch())
-                        .count();
-      if (now_ms - last >= 2000) {
-        data.last_transient_ms.store(0);
-        int idx = data.current_file_index.load();
-        std::cout
-            << idx + 1 << "/" << data.file_list.size() << ":"
-            << std::filesystem::path(data.file_list[idx]).filename().string()
-            << std::endl;
-      }
-    }
     Pa_Sleep(100);
   }
 

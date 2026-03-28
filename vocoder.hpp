@@ -83,6 +83,9 @@ public:
 
   bool ROBOTO;
   bool WHISPER;
+  bool ALIEN;
+
+  float stretch = 1.0f;
 
   float fs;
 

@@ -1,5 +1,14 @@
 #include "vocoder.hpp"
+#include <algorithm>
+#include <cmath>
 #include <mutex>
+#include <random>
+
+inline float randf(float min = 0.0f, float max = 1.0f) {
+  thread_local static std::mt19937 rng(std::random_device{}());
+  thread_local static std::uniform_real_distribution<float> dist(0.0f, 1.0f);
+  return min + (max - min) * dist(rng);
+}
 
 Vocoder::Vocoder(const Vocoder &other)
     : it(other.it), N(other.N), window_size(other.window_size),
@@ -14,7 +23,7 @@ Vocoder::Vocoder(const Vocoder &other)
       calculated(other.calculated), _calculated_until(other._calculated_until),
       sig_len(other.sig_len), analysis_hopsize(other.analysis_hopsize),
       synthesis_hopsize(other.synthesis_hopsize), fs(other.fs),
-      ROBOTO(other.ROBOTO), WHISPER(other.WHISPER),
+      ROBOTO(other.ROBOTO), WHISPER(other.WHISPER), ALIEN(other.ALIEN),
       current_note(other.current_note.load()),
       pending_note(other.pending_note.load()),
       clear_pending(other.clear_pending.load()), running(other.running.load()),
@@ -99,50 +108,6 @@ void Vocoder::clear() {
   _adsr_phase = AdsrPhase::Attack;
   _adsr_pos = 0;
   _adsr_level = 0.0f;
-
-  if (_use_precomputed && _precomputed.count(current_note.load())) {
-    smpl_ptr = 0;
-    return;
-  }
-
-  /*out_samples.clear();*/
-
-  float freq = note_to_freq(current_note);
-  float div = 440.0f;
-  float r = div / freq;
-  pitch_ratio = r;
-
-  gain = 1.0f;
-
-  out_samples = std::vector<float>((resampled.size() * pitch_ratio), 0.0f);
-  /*_buffer = std::vector<float>(window_size, 0.0f);*/
-  std::fill(_phi.begin(), _phi.end(), 0.0f);
-  std::fill(_prev_phase.begin(), _prev_phase.end(), 0.0f);
-
-  size_t syn_size = static_cast<size_t>(window_size * pitch_ratio);
-  _syn_window = hanning(static_cast<int>(syn_size), 0);
-
-  // Correct OLA normalization: sum of squared window values at output hop
-  // positions. For Hanning with hop_size_div× overlap this equals 0.375 *
-  // hop_size_div (≈3 for div=8), NOT the simple window sum (≈N/2), which would
-  // be ~170× too large.
-  int out_h =
-      std::max(1, static_cast<int>((window_size / hop_size_div) * pitch_ratio));
-  _syn_window_sum = 0.0f;
-  for (int k = 0; k * out_h < static_cast<int>(_syn_window.size()); k++)
-    _syn_window_sum += _syn_window[k * out_h] * _syn_window[k * out_h];
-  if (_syn_window_sum == 0.0f)
-    _syn_window_sum = 1.0f; // guard against empty window
-
-  // Clamp cutoff below Nyquist: only anti-alias when compressing (pitch_ratio <
-  // 1)
-  lowpass.setCutoff(std::min(nyquist * pitch_ratio, nyquist * 0.99f));
-  lowpass.reset();
-
-  calculated = false;
-  _calculated_until = 0;
-  read_ptr = 0;
-  write_ptr = 0;
   smpl_ptr = 0;
 }
 
@@ -312,113 +277,8 @@ float Vocoder::get_sample(int note, int n) {
     }
   }
 
-  if (n >= _calculated_until) {
-    // Prepare new window
-    size_t resampled_size = static_cast<size_t>(window_size * pitch_ratio);
-    if (_resampled.size() != resampled_size)
-      _resampled.resize(resampled_size, 0.0f);
-
-    synthesis_hopsize = window_size / hop_size_div;
-    analysis_hopsize =
-        synthesis_hopsize; // equal hops; pitch shift via per-window resampling
-
-    // Windowed samples
-    for (size_t i = 0; i < window_size; i++) {
-      size_t sample_idx = read_ptr + i;
-      _buffer[i] =
-          (sample_idx < resampled.size() ? window[i] * resampled[sample_idx]
-                                         : 0.0f);
-    }
-
-    /*auto filtered_buffer = lowpass_filter(_buffer, (_fft_buffer.size() *
-     * pitch_ratio) / 2);*/
-    // FFT
-    forward_fft(_buffer.data(),
-                reinterpret_cast<std::complex<float> *>(_fft_buffer.data()));
-
-    // Phase vocoder processing
-    for (size_t i = 0; i < _fft_buffer.size(); i++) {
-      float phase = std::arg(_fft_buffer[i]);
-      float amplitude = std::abs(_fft_buffer[i]);
-
-      // Expected phase advance for this bin over one analysis hop
-      float expected =
-          2.0f * M_PI * static_cast<float>(i) * analysis_hopsize / N;
-
-      // True phase deviation, wrapped to [-pi, pi]
-      float delta = phase - _prev_phase[i] - expected;
-      delta -= 2.0f * M_PI * std::round(delta / (2.0f * M_PI));
-
-      // Accumulate output phase and store current phase for next frame
-      _phi[i] += expected + delta;
-      _phi[i] -= 2.0f * M_PI * std::round(_phi[i] / (2.0f * M_PI));
-      _prev_phase[i] = phase;
-
-      _fft_buffer[i].real(amplitude * std::cos(_phi[i]));
-      _fft_buffer[i].imag(amplitude * std::sin(_phi[i]));
-    }
-
-    // Inverse FFT
-    ifft(_buffer.data(),
-         reinterpret_cast<std::complex<float> *>(_fft_buffer.data()));
-
-    // Resample
-    size_t s = _buffer.size() - 1;
-    size_t L = static_cast<size_t>(std::floor(s * pitch_ratio));
-    for (size_t i = 0; i < L; i++) {
-      /*float x = static_cast<float>(i) * s / L;*/
-      float x = static_cast<float>(i) * (s - 1) / (L - 1);
-      size_t ix = static_cast<size_t>(std::floor(x));
-      float mu = x - ix;
-      // Clamp indices to valid range
-      size_t buf_size = _buffer.size();
-      size_t ix0 = std::min((ix == 0 ? 0 : ix - 1), buf_size - 1);
-      size_t ix1 = std::min(ix, buf_size - 1);
-      size_t ix2 = std::min((ix + 1 < s ? ix + 1 : s - 1), buf_size - 1);
-      size_t ix3 = std::min((ix + 2 < s ? ix + 2 : s - 1), buf_size - 1);
-
-      _resampled[i] = lowpass.process(cubic_interp(
-          _buffer[ix0], _buffer[ix1], _buffer[ix2], _buffer[ix3], mu));
-    }
-
-    // low pass filter
-    /*auto filtered_buffer = lowpass_filter(_resampled, fs / 4);*/
-
-    // Overlap-add into output domain (write_ptr advances at synthesis *
-    // pitch_ratio rate)
-    for (size_t i = 0;
-         i < _resampled.size() && (write_ptr + i) < out_samples.size(); i++) {
-      out_samples[write_ptr + i] +=
-          (_syn_window[i] * _resampled[i]) / (_syn_window_sum * N);
-    }
-
-    // Increment pointers (out_hop >= 1 to prevent infinite loop)
-    int out_hop =
-        std::max(1, static_cast<int>(synthesis_hopsize * pitch_ratio));
-    read_ptr += synthesis_hopsize;
-    write_ptr += out_hop;
-    _calculated_until += out_hop;
-
-    if (write_ptr >= static_cast<int>(out_samples.size())) {
-      calculated = true;
-      _calculated_until = static_cast<int>(out_samples.size());
-    }
-  }
-
-  if (n >= out_samples.size()) {
-    running.store(false);
-    stopping.store(false);
-
-    current_note.store(0);
-    smpl_ptr = 0;
-    read_ptr = 0;
-    write_ptr = 0;
-
-    clear();
-    return 0.0f;
-  }
-
-  return (out_samples[n] / gain) * volume.load() * env;
+  // Precomputed data not yet available — silent until ready
+  return 0.0f;
 }
 
 // ---------------------------------------------------------------------------
@@ -453,55 +313,66 @@ std::vector<float> Vocoder::_synth_note(int note, fftwf_plan inv, float *fi,
   float freq = note_to_freq(note);
   float pr = 440.0f / freq;
 
-  size_t out_size = static_cast<size_t>(resampled.size() * pr);
-  std::vector<float> out(out_size, 0.0f);
-
   int hop = window_size / hop_size_div;
-  int out_hop = std::max(1, static_cast<int>(hop * pr));
+  // Synthesis hop scaled by 1/pr → time-stretch factor 1/pr.
+  // A final resample by pr then restores original duration while shifting
+  // pitch.
+  float s = stretch;
+  int out_hop = std::max(1, static_cast<int>(hop * s / pr));
 
-  size_t syn_size = static_cast<size_t>(window_size * pr);
-  std::vector<float> syn_win = hanning(static_cast<int>(syn_size), 0);
+  // Intermediate time-stretched buffer (duration × s/pr)
+  size_t stretched_size = static_cast<size_t>(resampled.size() * s / pr);
+  std::vector<float> stretched(stretched_size, 0.0f);
 
+  // Synthesis window same size as analysis window — no per-frame resampling
+  std::vector<float> syn_win = hanning(window_size, 0);
   float syn_sum = 0.0f;
-  for (int k = 0; k * out_hop < static_cast<int>(syn_win.size()); k++)
+  for (int k = 0; k * out_hop < window_size; k++)
     syn_sum += syn_win[k * out_hop] * syn_win[k * out_hop];
   if (syn_sum == 0.0f)
     syn_sum = 1.0f;
-
-  BiquadLowpass lp(fs, N);
-  lp.setCutoff(std::min(nyquist * pr, nyquist * 0.99f));
 
   std::vector<float> phi(N / 2 + 1, 0.0f);
   std::vector<float> prev_phase(N / 2 + 1, 0.0f);
   std::vector<std::complex<float>> fft_buf(N / 2 + 1);
   std::vector<float> ifft_buf(window_size, 0.0f);
-  std::vector<float> resampled_buf(syn_size, 0.0f);
 
   int wp = 0;
   for (int f = 0; f < static_cast<int>(_fft_cache.size()); f++) {
-    if (wp >= static_cast<int>(out.size()))
+    if (wp >= static_cast<int>(stretched.size()))
       break;
 
-    // Copy cached frame and run phase vocoder
     fft_buf = _fft_cache[f];
     for (int i = 0; i < N / 2 + 1; i++) {
       float phase = std::arg(fft_buf[i]);
       float amp = std::abs(fft_buf[i]);
+      if (ALIEN) {
+        if (i > 0) {
+          float prev_amp = std::abs(fft_buf[i - 1]);
+          amp = 0.9f * prev_amp + 0.1f * amp;
+        }
+      }
       float expected = 2.0f * M_PI * i * hop / N;
       float delta = phase - prev_phase[i] - expected;
       delta -= 2.0f * M_PI * std::round(delta / (2.0f * M_PI));
-      if (ROBOTO) {
-        phi[i] += expected;
-      }
-      if (WHISPER) {
-        phi[i] = 2.0f * M_PI * std::rand();
-      } else {
-        phi[i] += expected + delta;
-      }
 
+      // Phase advance: stretch s, pitch shift pr
+      if (ROBOTO) {
+        phi[i] += expected * s / pr;
+      } else if (WHISPER) {
+        phi[i] = 2.0f * M_PI * randf();
+      } else {
+        phi[i] += (expected + delta) * s / pr;
+      }
       phi[i] -= 2.0f * M_PI * std::round(phi[i] / (2.0f * M_PI));
       prev_phase[i] = phase;
       fft_buf[i] = std::polar(amp, phi[i]);
+    }
+
+    if (ALIEN) {
+      // std::vector<std::complex<float>> tmp = fft_buf;
+      // for (int i = 0; i <= N / 2; i++)
+      //   fft_buf[i] = tmp[N / 2 - i];
     }
 
     // IFFT — fftwf_execute_dft_c2r is thread-safe with private buffers
@@ -513,34 +384,25 @@ std::vector<float> Vocoder::_synth_note(int note, fftwf_plan inv, float *fi,
     for (int i = 0; i < window_size; i++)
       ifft_buf[i] = fi[i];
 
-    // Cubic resample
-    size_t s = ifft_buf.size() - 1;
-    size_t L = static_cast<size_t>(std::floor(s * pr));
-    if (L < 1)
-      L = 1;
-    if (resampled_buf.size() != L)
-      resampled_buf.resize(L);
-    for (size_t i = 0; i < L; i++) {
-      float x = static_cast<float>(i) * (s - 1) / (L - 1);
-      size_t ix = static_cast<size_t>(std::floor(x));
-      float mu = x - ix;
-      size_t ix0 = std::min(ix == 0 ? 0 : ix - 1, s);
-      size_t ix1 = std::min(ix, s);
-      size_t ix2 = std::min(ix + 1 < s ? ix + 1 : s - 1, s);
-      size_t ix3 = std::min(ix + 2 < s ? ix + 2 : s - 1, s);
-      resampled_buf[i] = lp.process(cubic_interp(
-          ifft_buf[ix0], ifft_buf[ix1], ifft_buf[ix2], ifft_buf[ix3], mu));
-    }
-
-    // OLA
-    for (size_t i = 0;
-         i < resampled_buf.size() &&
-         (wp + static_cast<int>(i)) < static_cast<int>(out.size());
-         i++)
-      out[wp + i] += (syn_win[i] * resampled_buf[i]) / (syn_sum * N);
+    // OLA into time-stretched buffer (no per-frame resampling)
+    for (int i = 0;
+         i < window_size && (wp + i) < static_cast<int>(stretched.size()); i++)
+      stretched[wp + i] += (syn_win[i] * ifft_buf[i]) / (syn_sum * N);
 
     wp += out_hop;
   }
+
+  // Final resample by pr: pitch-shifts while keeping duration × s
+  size_t out_size = static_cast<size_t>(resampled.size() * s);
+  std::vector<float> out(out_size, 0.0f);
+  SRC_DATA src{};
+  src.data_in = stretched.data();
+  src.data_out = out.data();
+  src.input_frames = static_cast<long>(stretched_size);
+  src.output_frames = static_cast<long>(out_size);
+  src.src_ratio = static_cast<double>(pr);
+  src.end_of_input = 1;
+  src_simple(&src, SRC_SINC_FASTEST, 1);
 
   return out;
 }
@@ -605,7 +467,6 @@ void Vocoder::precompute(int min_note, int max_note) {
   _fft_cache.clear();
 
   if (_cancel_precompute.load()) {
-    std::cout << "cancelled" << std::endl;
     return;
   }
 
@@ -614,7 +475,7 @@ void Vocoder::precompute(int min_note, int max_note) {
       _precomputed[note] = std::move(buf);
 
   _use_precomputed.store(true);
-  std::cout << "precompute done" << std::endl;
+  // std::cout << "precompute done" << std::endl;
 }
 
 Vocoder::~Vocoder() {
