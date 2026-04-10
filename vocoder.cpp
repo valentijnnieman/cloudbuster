@@ -24,9 +24,7 @@ Vocoder::Vocoder(const Vocoder &other)
       sig_len(other.sig_len), analysis_hopsize(other.analysis_hopsize),
       synthesis_hopsize(other.synthesis_hopsize), fs(other.fs),
       ROBOTO(other.ROBOTO), WHISPER(other.WHISPER), ALIEN(other.ALIEN),
-      current_note(other.current_note.load()),
-      pending_note(other.pending_note.load()),
-      clear_pending(other.clear_pending.load()), running(other.running.load()),
+      current_note(other.current_note.load()), running(other.running.load()),
       stopping(other.stopping.load()), volume(other.volume.load()),
       _cancel_precompute(false), read_ptr(other.read_ptr),
       write_ptr(other.write_ptr),
@@ -38,6 +36,7 @@ Vocoder::Vocoder(const Vocoder &other)
   _fft_out_alloc = fft_out = (fftwf_complex *)fftwf_alloc_complex(sig_len);
   p = fftwf_plan_dft_r2c_1d(N, fft_in, fft_out, FFTW_ESTIMATE);
   pi = fftwf_plan_dft_c2r_1d(N, fft_out, fft_in, FFTW_ESTIMATE);
+  PaUtil_InitializeRingBuffer(&_note_queue, sizeof(NoteEvent), 16, _note_queue_buf);
 }
 
 void Vocoder::print_stats() {
@@ -102,6 +101,7 @@ Vocoder::Vocoder(const std::string &filename, int N, int window_size,
   window = hanning(window_size, 0);
 
   smpl_ptr = 0;
+  PaUtil_InitializeRingBuffer(&_note_queue, sizeof(NoteEvent), 16, _note_queue_buf);
 }
 
 void Vocoder::clear() {

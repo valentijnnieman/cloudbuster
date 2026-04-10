@@ -28,6 +28,12 @@ typedef struct {
   std::atomic<bool> roboto{false};
   std::atomic<bool> whisper{false};
   std::atomic<bool> alien{false};
+
+  // runtime parameter changes (require voice rebuild)
+  std::atomic<int> pending_N{1024};
+  std::atomic<int> pending_hop_size_div{8};
+  std::atomic<float> pending_stretch{2.0f};
+  std::atomic<bool> param_change_pending{false};
 } callback_data_s;
 
 class MidiController {
@@ -59,10 +65,9 @@ public:
 
     if (status == 0x90 && velocity > 0) { // Note On
       auto &s = data->voices[data->stln_voice];
-      s->pending_note.store(key);
       s->stopping.store(false);
-      s->clear_pending.store(
-          true); // audio thread will call clear() + set running
+      NoteEvent ev{key};
+      PaUtil_WriteRingBuffer(&s->_note_queue, &ev, 1);
       data->stln_voice = (data->stln_voice + 1) % data->voices.size();
     }
     if (status == 0x80 || (status == 0x90 && velocity == 0)) { // Note Off
@@ -82,6 +87,28 @@ public:
           v->volume.store(vol);
         std::string msg = "vol: " + std::to_string(vol);
         print_with_filename(data, msg);
+      }
+      if (key == 20) { // CC20: N (512/1024/2048/4096)
+        const int presets[] = {512, 1024, 2048, 4096};
+        int i = std::min(3, (velocity * 4) / 128);
+        data->pending_N.store(presets[i]);
+        data->param_change_pending.store(true);
+        print_with_filename(data, "N=" + std::to_string(presets[i]));
+      }
+      if (key == 21) { // CC21: hop_size_div (2/4/8/16)
+        const int presets[] = {2, 4, 8, 16};
+        int i = std::min(3, (velocity * 4) / 128);
+        data->pending_hop_size_div.store(presets[i]);
+        data->param_change_pending.store(true);
+        print_with_filename(data, "hop/=" + std::to_string(presets[i]));
+      }
+      if (key == 22) { // CC22: stretch (0.25–4.0), applied live
+        float val = 0.25f + (velocity / 127.0f) * 3.75f;
+        for (auto &v : data->voices)
+          v->stretch = val;
+        data->pending_stretch.store(val);
+        data->param_change_pending.store(true);
+        print_with_filename(data, "stretch=" + std::to_string(val));
       }
       int n = (int)data->file_list.size();
       if (n > 1) {
@@ -118,11 +145,15 @@ public:
           int next = (data->current_file_index.load() + 1) % n;
           data->pending_file_index.store(next);
           data->file_change_pending.store(true);
+          std::string msg = "loading...";
+          print_with_filename(data, msg);
         }
         if (key == 47 && velocity > 0) { // prev file
           int prev = (data->current_file_index.load() - 1 + n) % n;
           data->pending_file_index.store(prev);
           data->file_change_pending.store(true);
+          std::string msg = "loading...";
+          print_with_filename(data, msg);
         }
         if (key == 80 && velocity > 0) { // CC80: toggle roboto
           data->roboto.store(!data->roboto.load());

@@ -29,7 +29,8 @@ add_subdirectory("${PROJECT_SOURCE_DIR}/rtmidi")
 set(RTMIDI_TARGETNAME_UNINSTALL "rtmidi-uninstall" CACHE STRING "Name of 'uninstall' build target")
 
 include_directories("${PROJECT_SOURCE_DIR}/fftw-3.3.10/api")
-add_executable(${PROJECT_NAME} "main.cpp" "vocoder.cpp")
+include_directories("${PROJECT_SOURCE_DIR}/portaudio/src/common")
+add_executable(${PROJECT_NAME} "main.cpp" "vocoder.cpp" "portaudio/src/common/pa_ringbuffer.c")
 target_link_libraries(${PROJECT_NAME} PortAudio SndFile::sndfile samplerate rtmidi ${FFTW3_LIBRARIES} fftw3f)
 set_target_properties(${PROJECT_NAME} PROPERTIES CXX_STANDARD 20)
 

@@ -39,8 +39,9 @@ static int callback(const void *input, void *output, unsigned long frameCount,
 
   uint8_t amplitudes = 0;
   for (auto &sampler : data->voices) {
-    if (sampler->clear_pending.exchange(false)) {
-      sampler->current_note.store(sampler->pending_note.load());
+    NoteEvent ev;
+    while (PaUtil_ReadRingBuffer(&sampler->_note_queue, &ev, 1)) {
+      sampler->current_note.store(ev.note);
       sampler->clear();
       sampler->running.store(true);
     }
@@ -102,6 +103,7 @@ int main(int argc, const char *argv[]) {
   int midi_in = 1;
   int midi_out = 1;
   int device = 0;
+  int num_voices = 4;
   std::string folder = ".";
 
   for (int i = 0; i < args.size(); i++) {
@@ -208,6 +210,10 @@ int main(int argc, const char *argv[]) {
   data.whisper.store(whisper);
   data.alien.store(alien);
 
+  data.pending_N.store(N);
+  data.pending_hop_size_div.store(hop_size_div);
+  data.pending_stretch.store(stretch);
+
   MidiController ctrl;
 
   for (auto &name : ctrl.portNames) {
@@ -223,7 +229,7 @@ int main(int argc, const char *argv[]) {
   signal(SIGTERM, handle_signal);
 
   std::cout << "init voices..." << std::endl;
-  for (int j = 0; j < 4; j++) {
+  for (int j = 0; j < num_voices; j++) {
     Vocoder *s = new Vocoder(sampler);
     s->it = j;
 
@@ -303,6 +309,7 @@ int main(int argc, const char *argv[]) {
             for (auto &v : data.voices)
               v->apply_precomputed_from(*precompute_tmpl);
             data.reloading.store(false);
+            MidiController::print_with_filename(&data, "done!");
           }
         });
   };
@@ -333,7 +340,7 @@ int main(int argc, const char *argv[]) {
       new_sampler.ALIEN = data.alien;
       new_sampler.stretch = stretch;
       data.voices.clear();
-      for (int j = 0; j < 4; j++) {
+      for (int j = 0; j < num_voices; j++) {
         Vocoder *s = new Vocoder(new_sampler);
         s->it = j;
         data.voices.push_back(std::shared_ptr<Vocoder>(s));
@@ -343,6 +350,39 @@ int main(int argc, const char *argv[]) {
       data.reloading.store(false);
 
       // Start background precompute for the new file
+      if (precompute_flag)
+        launch_precompute(data.file_list[idx]);
+    }
+
+    if (data.param_change_pending.exchange(false)) {
+      N = data.pending_N.load();
+      window_size = N;
+      hop_size_div = data.pending_hop_size_div.load();
+      stretch = data.pending_stretch.load();
+
+      if (precompute_tmpl)
+        precompute_tmpl->_cancel_precompute.store(true);
+      if (precompute_thread.joinable())
+        precompute_thread.join();
+
+      data.reloading.store(true);
+      Pa_Sleep(50);
+      int idx = data.current_file_index.load();
+      Vocoder new_sampler(data.file_list[idx], N, window_size, hop_size_div,
+                          fs);
+      new_sampler.ROBOTO = data.roboto;
+      new_sampler.WHISPER = data.whisper;
+      new_sampler.ALIEN = data.alien;
+      new_sampler.stretch = stretch;
+      data.voices.clear();
+      for (int j = 0; j < num_voices; j++) {
+        Vocoder *s = new Vocoder(new_sampler);
+        s->it = j;
+        data.voices.push_back(std::shared_ptr<Vocoder>(s));
+      }
+      data.stln_voice = 0;
+      data.reloading.store(false);
+
       if (precompute_flag)
         launch_precompute(data.file_list[idx]);
     }

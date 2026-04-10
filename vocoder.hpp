@@ -8,10 +8,15 @@
 #include <vector>
 
 #include "biquad.hpp"
+#include "pa_ringbuffer.h"
 #include "sndfile.hh"
 #include <fftw3.h>
 #include <map>
 #include <samplerate.h>
+
+struct NoteEvent {
+  int note;
+};
 
 class Vocoder {
 private:
@@ -64,8 +69,8 @@ public:
   std::vector<float> out_samples;
   int it;
   std::atomic<int> current_note{0};
-  std::atomic<int> pending_note{0};
-  std::atomic<bool> clear_pending{false};
+  PaUtilRingBuffer _note_queue;
+  NoteEvent _note_queue_buf[16];
   int smpl_ptr;
   std::atomic<bool> running{false};
   std::atomic<bool> stopping{false};
