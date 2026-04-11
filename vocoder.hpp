@@ -12,7 +12,6 @@
 #include "sndfile.hh"
 #include <fftw3.h>
 #include <map>
-#include <samplerate.h>
 
 struct NoteEvent {
   int note;
@@ -111,9 +110,6 @@ public:
   void forward_fft(float *time_data, std::complex<float> *freq_data);
 
   void ifft(float *time_data, std::complex<float> *freq_data);
-
-  void resample(float *data_in, float *data_out, int input_size,
-                int output_size, float pitch_ratio);
 
   /*void calculate_stft_windows();*/
 

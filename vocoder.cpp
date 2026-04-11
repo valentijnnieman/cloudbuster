@@ -68,14 +68,17 @@ Vocoder::Vocoder(const std::string &filename, int N, int window_size,
   int out_frames = static_cast<int>(info.frames * src_ratio);
   resampled.resize(out_frames, 0.0f);
 
-  SRC_DATA src_data;
-  src_data.data_in = mono.data();
-  src_data.data_out = resampled.data();
-  src_data.input_frames = info.frames;
-  src_data.output_frames = out_frames;
-  src_data.src_ratio = src_ratio;
-  src_data.end_of_input = 1;
-  src_simple(&src_data, SRC_SINC_FASTEST, 1);
+  int mono_sz = static_cast<int>(mono.size());
+  for (int i = 0; i < out_frames; i++) {
+    float pos = i / src_ratio;
+    int idx = static_cast<int>(pos);
+    float frac = pos - idx;
+    float y0 = (idx > 0) ? mono[idx - 1] : 0.0f;
+    float y1 = (idx < mono_sz) ? mono[idx] : 0.0f;
+    float y2 = (idx + 1 < mono_sz) ? mono[idx + 1] : 0.0f;
+    float y3 = (idx + 2 < mono_sz) ? mono[idx + 2] : 0.0f;
+    resampled[i] = cubic_interp(y0, y1, y2, y3, frac);
+  }
 
   /* Close the soundfile */
   sf_close(file);
@@ -174,19 +177,6 @@ void Vocoder::ifft(float *time_data, std::complex<float> *freq_data) {
   fft_out = reinterpret_cast<fftwf_complex *>(freq_data);
   fft_in = time_data;
   fftwf_execute_dft_c2r(pi, fft_out, fft_in);
-}
-
-void Vocoder::resample(float *data_in, float *data_out, int input_size,
-                       int output_size, float pitch_ratio) {
-
-  SRC_DATA src_data;
-  src_data.data_in = data_in;
-  src_data.data_out = data_out;
-  src_data.input_frames = input_size;
-  src_data.output_frames = output_size;
-  src_data.src_ratio = pitch_ratio;
-
-  src_simple(&src_data, 2, 2);
 }
 
 std::vector<float> Vocoder::lowpass_filter(std::vector<float> input,
@@ -395,14 +385,16 @@ std::vector<float> Vocoder::_synth_note(int note, fftwf_plan inv, float *fi,
   // Final resample by pr: pitch-shifts while keeping duration × s
   size_t out_size = static_cast<size_t>(resampled.size() * s);
   std::vector<float> out(out_size, 0.0f);
-  SRC_DATA src{};
-  src.data_in = stretched.data();
-  src.data_out = out.data();
-  src.input_frames = static_cast<long>(stretched_size);
-  src.output_frames = static_cast<long>(out_size);
-  src.src_ratio = static_cast<double>(pr);
-  src.end_of_input = 1;
-  src_simple(&src, SRC_SINC_FASTEST, 1);
+  for (size_t i = 0; i < out_size; i++) {
+    float pos = i / pr;
+    int idx = static_cast<int>(pos);
+    float frac = pos - idx;
+    float y0 = (idx > 0 && idx - 1 < (int)stretched_size) ? stretched[idx - 1] : 0.0f;
+    float y1 = (idx < (int)stretched_size) ? stretched[idx] : 0.0f;
+    float y2 = (idx + 1 < (int)stretched_size) ? stretched[idx + 1] : 0.0f;
+    float y3 = (idx + 2 < (int)stretched_size) ? stretched[idx + 2] : 0.0f;
+    out[i] = cubic_interp(y0, y1, y2, y3, frac);
+  }
 
   return out;
 }

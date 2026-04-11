@@ -9,7 +9,6 @@
 #include <thread>
 
 #include "sndfile.hh"
-#include <samplerate.h>
 #include <vector>
 
 #include "portaudio.h"
