@@ -33,7 +33,8 @@ typedef struct {
   std::atomic<int> pending_N{1024};
   std::atomic<int> pending_hop_size_div{8};
   std::atomic<float> pending_stretch{2.0f};
-  std::atomic<bool> param_change_pending{false};
+  std::atomic<bool> param_change_dirty{false};
+  std::atomic<int64_t> param_last_change_ms{0};
 } callback_data_s;
 
 class MidiController {
@@ -42,6 +43,12 @@ public:
   RtMidiOut *midiOut = 0;
 
   std::vector<std::string> portNames;
+
+  static int64_t now_ms() {
+    return std::chrono::duration_cast<std::chrono::milliseconds>(
+               std::chrono::steady_clock::now().time_since_epoch())
+        .count();
+  }
 
   static void print_with_filename(callback_data_s *data,
                                   const std::string &msg) {
@@ -92,14 +99,16 @@ public:
         const int presets[] = {512, 1024, 2048, 4096};
         int i = std::min(3, (velocity * 4) / 128);
         data->pending_N.store(presets[i]);
-        data->param_change_pending.store(true);
+        data->param_change_dirty.store(true);
+        data->param_last_change_ms.store(now_ms());
         print_with_filename(data, "N=" + std::to_string(presets[i]));
       }
       if (key == 21) { // CC21: hop_size_div (2/4/8/16)
         const int presets[] = {2, 4, 8, 16};
         int i = std::min(3, (velocity * 4) / 128);
         data->pending_hop_size_div.store(presets[i]);
-        data->param_change_pending.store(true);
+        data->param_change_dirty.store(true);
+        data->param_last_change_ms.store(now_ms());
         print_with_filename(data, "hop/=" + std::to_string(presets[i]));
       }
       if (key == 22) { // CC22: stretch (0.25–4.0), applied live
@@ -107,7 +116,8 @@ public:
         for (auto &v : data->voices)
           v->stretch = val;
         data->pending_stretch.store(val);
-        data->param_change_pending.store(true);
+        data->param_change_dirty.store(true);
+        data->param_last_change_ms.store(now_ms());
         print_with_filename(data, "stretch=" + std::to_string(val));
       }
       int n = (int)data->file_list.size();

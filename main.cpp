@@ -354,7 +354,10 @@ int main(int argc, const char *argv[]) {
         launch_precompute(data.file_list[idx]);
     }
 
-    if (data.param_change_pending.exchange(false)) {
+    constexpr int64_t PARAM_DEBOUNCE_MS = 500;
+    if (data.param_change_dirty.load() &&
+        MidiController::now_ms() - data.param_last_change_ms.load() >= PARAM_DEBOUNCE_MS) {
+      data.param_change_dirty.store(false);
       N = data.pending_N.load();
       window_size = N;
       hop_size_div = data.pending_hop_size_div.load();
