@@ -6,3 +6,4 @@ inventory.ini
 playbook.yaml
 fftw-3.3.10
 toolchain.cmake
+__pycache__
