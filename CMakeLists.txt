@@ -1,10 +1,16 @@
 cmake_minimum_required(VERSION 3.27)
 include(CMakePrintHelpers)
 
+# Vendored fftw-3.3.10 declares cmake_minimum_required(VERSION 3.0); CMake 4.x
+# removed compatibility with < 3.5. Inherited by all add_subdirectory() calls.
+set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
+
 project(cloudbuster)
 set(RTMIDI_TARGETNAME_UNINSTALL "rtmidi-uninstall")
 set(ENABLE_PRECOMPILED_HEADERS OFF)
 set(PA_USE_SNDIO OFF CACHE BOOL "" FORCE)
+# Requires libpulse-dev headers; ALSA covers Linux output. Remove to re-enable.
+set(PA_USE_PULSEAUDIO OFF CACHE BOOL "" FORCE)
 
 # find_package(PkgConfig REQUIRED)
 

@@ -40,7 +40,19 @@ Supports 4-voice polyphony, real-time MIDI CC control, and several vocal/spectra
 | `roboto` | Enable robotization effect |
 | `whisper` | Enable whisper effect |
 | `alien` | Enable alien/ring-mod effect |
-| `no-precompute` | Skip precomputation (samples are computed on demand) |
+| `realtime` | Synthesize on the audio thread instead of precomputing every note (alias: `no-precompute`) |
+
+### Synthesis modes
+
+By default every note in `-min`..`-max` is baked on worker threads after a file
+loads; playback is then a buffer read, but nothing sounds until the bake
+finishes and only notes inside that range play.
+
+`realtime` swaps in a streaming phase vocoder: a single STFT analysis pass runs
+at load time and each voice synthesizes frames on demand as it plays. Notes are
+playable immediately across the whole MIDI range and parameter changes take
+effect without a re-bake, at the cost of doing the IFFT and overlap-add on the
+audio thread per voice. `-min`/`-max` are ignored in this mode.
 
 # MIDI CC Control
 

@@ -60,6 +60,16 @@ public:
     std::cout << msg << std::endl;
   }
 
+  // A voice is available once it has never been assigned, or has finished its
+  // envelope with no note-on still sitting in its queue. The queue check
+  // matters: between the MIDI write and the audio thread's drain, `running` is
+  // still false even though the voice is spoken for.
+  static bool voice_is_free(const std::shared_ptr<Vocoder> &v) {
+    return v->midi_note.load() == -1 ||
+           (!v->running.load() &&
+            PaUtil_GetRingBufferReadAvailable(&v->_note_queue) == 0);
+  }
+
   static void callback(double deltatime, std::vector<unsigned char> *message,
                        void *userData) {
     if (message->size() < 3)
@@ -71,20 +81,55 @@ public:
     callback_data_s *data = static_cast<callback_data_s *>(userData);
 
     if (status == 0x90 && velocity > 0) { // Note On
-      auto &s = data->voices[data->stln_voice];
+      auto &voices = data->voices;
+      if (voices.empty())
+        return;
+
+      // Retrigger a voice that is already sounding this note — including one
+      // still in its release tail — instead of stealing a second voice for it.
+      // Two voices on the same note is the doubling we fixed in the plugin.
+      for (auto &v : voices) {
+        if (v->midi_note.load() == key && !voice_is_free(v)) {
+          v->stopping.store(false);
+          NoteEvent ev{key};
+          PaUtil_WriteRingBuffer(&v->_note_queue, &ev, 1);
+          return;
+        }
+      }
+
+      // Prefer a free voice; fall back to round-robin steal
+      size_t idx = data->stln_voice;
+      for (size_t i = 0; i < voices.size(); i++) {
+        size_t candidate = (data->stln_voice + i) % voices.size();
+        if (voice_is_free(voices[candidate])) {
+          idx = candidate;
+          break;
+        }
+      }
+      data->stln_voice = (idx + 1) % voices.size();
+
+      auto &s = voices[idx];
+      s->midi_note.store(key);
       s->stopping.store(false);
       NoteEvent ev{key};
       PaUtil_WriteRingBuffer(&s->_note_queue, &ev, 1);
-      data->stln_voice = (data->stln_voice + 1) % data->voices.size();
     }
     if (status == 0x80 || (status == 0x90 && velocity == 0)) { // Note Off
-      auto it = std::find_if(data->voices.begin(), data->voices.end(),
-                             [key](const std::shared_ptr<Vocoder> &s) {
-                               return s->current_note.load() == key &&
-                                      s->running.load();
-                             });
-      if (it != data->voices.end()) {
-        (*it)->stopping.store(true);
+      // Match on midi_note, not current_note: a note-off arriving in the same
+      // audio buffer as its note-on would find current_note still stale and
+      // drop the release, leaving the voice sounding forever — and the next
+      // press of that note doubling on top of it.
+      for (auto &v : data->voices) {
+        // voice_is_free skips voices whose midi_note is merely a leftover from
+        // a note that already finished — matching one of those would swallow
+        // the note-off and leave the voice that is actually sounding stuck on.
+        if (v->midi_note.load() == key && !voice_is_free(v) &&
+            !v->stopping.load()) {
+          v->stopping.store(true); // triggers ADSR release
+          // midi_note stays put: the voice owns the note through its release
+          // tail, so a retrigger lands back on this same voice.
+          break;
+        }
       }
     }
     if (status == 0xB0) { // Control Change

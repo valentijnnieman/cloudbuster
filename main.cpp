@@ -36,7 +36,6 @@ static int callback(const void *input, void *output, unsigned long frameCount,
   if (data->reloading.load())
     return paContinue;
 
-  uint8_t amplitudes = 0;
   for (auto &sampler : data->voices) {
     NoteEvent ev;
     while (PaUtil_ReadRingBuffer(&sampler->_note_queue, &ev, 1)) {
@@ -46,10 +45,11 @@ static int callback(const void *input, void *output, unsigned long frameCount,
     }
 
     if (sampler->running.load()) {
-      amplitudes++;
       int note = sampler->current_note.load();
       for (size_t i = 0; i < frameCount; i++) {
-        float s = sampler->get_sample(note, sampler->smpl_ptr + i);
+        float s = sampler->realtime
+                      ? sampler->stream_sample(note)
+                      : sampler->get_sample(note, sampler->smpl_ptr + i);
         out[i * 2] += s;     // left
         out[i * 2 + 1] += s; // right
       }
@@ -57,9 +57,17 @@ static int callback(const void *input, void *output, unsigned long frameCount,
     }
   }
 
-  if (amplitudes > 0) {
+  // Fixed per-voice headroom, so a held note's loudness never depends on how
+  // many other voices happen to be active — dividing by the live voice count
+  // made the mix jump every time an overlapping note's release ended, which
+  // reads as a note suddenly doubling in level. sqrt(N) rather than N:
+  // uncorrelated voices sum in power, not amplitude, so /N gets audibly quiet.
+  // Worst-case correlated peaks are handled by the clamp.
+  if (!data->voices.empty()) {
+    const float scale =
+        1.0f / std::sqrt(static_cast<float>(data->voices.size()));
     for (size_t i = 0; i < frameCount * 2; ++i) {
-      out[i] = std::clamp(out[i] / amplitudes, -1.0f, 1.0f);
+      out[i] = std::clamp(out[i] * scale, -1.0f, 1.0f);
     }
   }
 
@@ -157,9 +165,12 @@ int main(int argc, const char *argv[]) {
         alien = true;
         std::cout << "alien" << std::endl;
       }
-      if (args[i] == "no-precompute") {
+      // Synthesis path: precomputed (default) bakes every note in the
+      // min..max range on worker threads; realtime synthesizes on the audio
+      // thread instead — no wait after a load, at a higher CPU cost per voice.
+      if (args[i] == "realtime" || args[i] == "no-precompute") {
         precompute_flag = false;
-        std::cout << "no precompute" << std::endl;
+        std::cout << "realtime" << std::endl;
       }
     }
   }
@@ -197,6 +208,10 @@ int main(int argc, const char *argv[]) {
   sampler.WHISPER = whisper;
   sampler.ALIEN = alien;
   sampler.stretch = stretch;
+  sampler.realtime = !precompute_flag;
+  // Analyse once here; the voice copies below inherit _fft_cache.
+  if (sampler.realtime)
+    sampler.prepare_realtime();
 
   PaError error;
   callback_data_s data;
@@ -219,10 +234,20 @@ int main(int argc, const char *argv[]) {
     std::cout << name << std::endl;
   }
 
-  ctrl.midiIn->openPort(midi_in);
+  // Open the requested hardware MIDI source if it exists; otherwise create a
+  // virtual port so senders (aplaymidi, aconnect, a serial-MIDI bridge) can
+  // reach us even with no MIDI hardware present. Avoids RtMidi's "no MIDI input
+  // sources found" crash and gives stm32-controls a stable port to connect to.
+  if ((int)ctrl.midiIn->getPortCount() > midi_in)
+    ctrl.midiIn->openPort(midi_in);
+  else
+    ctrl.midiIn->openVirtualPort("cloudbuster in");
   ctrl.midiIn->setCallback(ctrl.callback, &data);
 
-  ctrl.midiOut->openPort(midi_out);
+  if ((int)ctrl.midiOut->getPortCount() > midi_out)
+    ctrl.midiOut->openPort(midi_out);
+  else
+    ctrl.midiOut->openVirtualPort("cloudbuster out");
 
   signal(SIGINT, handle_signal);
   signal(SIGTERM, handle_signal);
@@ -338,6 +363,9 @@ int main(int argc, const char *argv[]) {
       new_sampler.WHISPER = data.whisper;
       new_sampler.ALIEN = data.alien;
       new_sampler.stretch = stretch;
+      new_sampler.realtime = !precompute_flag;
+      if (new_sampler.realtime)
+        new_sampler.prepare_realtime();
       data.voices.clear();
       for (int j = 0; j < num_voices; j++) {
         Vocoder *s = new Vocoder(new_sampler);
@@ -376,6 +404,9 @@ int main(int argc, const char *argv[]) {
       new_sampler.WHISPER = data.whisper;
       new_sampler.ALIEN = data.alien;
       new_sampler.stretch = stretch;
+      new_sampler.realtime = !precompute_flag;
+      if (new_sampler.realtime)
+        new_sampler.prepare_realtime();
       data.voices.clear();
       for (int j = 0; j < num_voices; j++) {
         Vocoder *s = new Vocoder(new_sampler);
